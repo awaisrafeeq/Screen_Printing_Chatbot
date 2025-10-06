@@ -1,0 +1,6 @@
+﻿models/models--sentence-transformers--all-MiniLM-L6-v2/
+__pycache__/
+*.pyc
+.env
+venv/
+chat_log.json
