@@ -8,7 +8,7 @@ from flows.pdf_extractor import extract_faq_data, extract_pdf_text
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Extract FAQ data from PDF (replace with your actual file path)
-pdf_text = extract_pdf_text(r"C:\Users\PMLS\Downloads\intents_chat_bot_self_workingupdated (1)\intents_chat_bot_self\FAQ For quotes.pdf")
+pdf_text = extract_pdf_text(r"https://github.com/awaisrafeeq/Screen_Printing_Chatbot/blob/master/FAQ%20For%20quotes.pdf")
 faq_data = extract_faq_data(pdf_text)
 
 # Create embeddings for FAQ questions only (not combining with answers)
