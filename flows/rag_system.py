@@ -3,13 +3,22 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from flows.pdf_extractor import extract_faq_data, extract_pdf_text
+import requests
 
 # Load the Sentence-BERT model for embedding FAQ questions and answers
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Extract FAQ data from PDF (replace with your actual file path)
 # pdf_text = extract_pdf_text(r"https://github.com/awaisrafeeq/Screen_Printing_Chatbot/blob/master/FAQ%20For%20quotes.pdf")
-pdf_text = extract_pdf_text(r"https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf")
+# pdf_text = extract_pdf_text(r"https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf")
+url = "https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf"
+local_path = "FAQ.pdf"
+
+r = requests.get(url)
+with open(local_path, "wb") as f:
+    f.write(r.content)
+
+pdf_text = extract_pdf_text(local_path)
 
 faq_data = extract_faq_data(pdf_text)
 
