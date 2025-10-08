@@ -21,12 +21,20 @@ from flows.order_flow import (
     order_summary_node,
     route_order_flow,order_decoration_location_node,order_decoration_colors_node
 )
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-
-# Add CORS middleware
+# ---------------------------
+# FastAPI app setup
+# ---------------------------
+app = FastAPI(
+    title="Screen Printing NW Chatbot API",
+    description="Conversational AI for quote requests and product questions",
+    version="1.0.0"
+)
+# Add CORS middleware to allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, replace with specific domains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
