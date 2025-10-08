@@ -21,7 +21,14 @@ from flows.order_flow import (
     order_summary_node,
     route_order_flow,order_decoration_location_node,order_decoration_colors_node
 )
-
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ---------------------------
 # In-memory session manager
 # ---------------------------
