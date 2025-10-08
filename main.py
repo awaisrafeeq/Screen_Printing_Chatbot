@@ -21,6 +21,8 @@ from flows.order_flow import (
     order_summary_node,
     route_order_flow,order_decoration_location_node,order_decoration_colors_node
 )
+from fastapi.middleware.cors import CORSMiddleware
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
