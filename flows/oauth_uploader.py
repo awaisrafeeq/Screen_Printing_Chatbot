@@ -22,7 +22,7 @@ def _get_creds() -> Credentials:
     creds = None
 
     print(f"DEBUG: GOOGLE_OAUTH_CLIENT_SECRET_JSON set: {bool(client_secret)}")
-    print(f"DEBUG: GOOGLE_REFRESH_TOKEN set: {bool(refresh_token)}")  # New debug line
+    print(f"DEBUG: GOOGLE_REFRESH_TOKEN set: {bool(refresh_token)}")
 
     if not client_secret:
         raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRET_JSON is not set. Check your .env file or Render environment variables.")
@@ -65,20 +65,27 @@ def _get_creds() -> Credentials:
             token_uri="https://oauth2.googleapis.com/token",
             scopes=SCOPES
         )
-        print(f"DEBUG: Initialized creds with refresh_token: {refresh_token[:10]}...")  # Debug log
+        print(f"DEBUG: Initialized creds with refresh_token: {refresh_token[:10]}...")
 
-    # Refresh or run OAuth flow if needed
+    # Validate and refresh if needed
+    if creds:
+        print(f"DEBUG: Initial creds valid: {creds.valid}")
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                print("DEBUG: Refreshed credentials successfully")
+            except Exception as e:
+                print(f"DEBUG: Refresh failed: {str(e)}")
+        elif not creds.valid:
+            print("DEBUG: Creds invalid and no refresh token available")
+
+    # Raise error if still invalid in Render
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            print("DEBUG: Refreshed credentials successfully")
+        if not os.getenv("RENDER"):  # Local flow
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+            creds = flow.run_local_server(port=0)
         else:
-            # Local development only: run interactive flow
-            if not os.getenv("RENDER"):  # Skip interactive flow in Render
-                flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-                creds = flow.run_local_server(port=0)
-            else:
-                raise RuntimeError("No valid credentials and interactive flow disabled in Render. Set GOOGLE_REFRESH_TOKEN.")
+            raise RuntimeError("No valid credentials and interactive flow disabled in Render. Set GOOGLE_REFRESH_TOKEN or check refresh_token validity.")
         
         with open(token_path, "w") as f:
             f.write(creds.to_json())
