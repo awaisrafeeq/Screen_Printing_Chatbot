@@ -62,11 +62,13 @@ def _get_creds() -> Credentials:
             token_uri="https://oauth2.googleapis.com/token",
             scopes=SCOPES
         )
+        print(f"Initialized creds with refresh_token: {refresh_token[:10]}...")  # Debug log
 
     # Refresh or run OAuth flow if needed
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            print("Refreshed credentials successfully")
         else:
             # Local development only: run interactive flow
             if not os.getenv("RENDER"):  # Skip interactive flow in Render
