@@ -21,6 +21,9 @@ def _get_creds() -> Credentials:
     token_path = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "token.json")
     creds = None
 
+    print(f"DEBUG: GOOGLE_OAUTH_CLIENT_SECRET_JSON set: {bool(client_secret)}")
+    print(f"DEBUG: GOOGLE_REFRESH_TOKEN set: {bool(refresh_token)}")  # New debug line
+
     if not client_secret:
         raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRET_JSON is not set. Check your .env file or Render environment variables.")
 
@@ -62,13 +65,13 @@ def _get_creds() -> Credentials:
             token_uri="https://oauth2.googleapis.com/token",
             scopes=SCOPES
         )
-        print(f"Initialized creds with refresh_token: {refresh_token[:10]}...")  # Debug log
+        print(f"DEBUG: Initialized creds with refresh_token: {refresh_token[:10]}...")  # Debug log
 
     # Refresh or run OAuth flow if needed
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            print("Refreshed credentials successfully")
+            print("DEBUG: Refreshed credentials successfully")
         else:
             # Local development only: run interactive flow
             if not os.getenv("RENDER"):  # Skip interactive flow in Render
