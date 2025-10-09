@@ -1,4 +1,3 @@
-# oauth_uploader.py
 import os
 from typing import Optional, Tuple
 import json
@@ -6,60 +5,62 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-
+from google.auth.transport.requests import Request
 
 # Scope lets us create files you own
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 def _get_creds() -> Credentials:
     """
-    Uses OAuth 'Installed App' flow. It stores/loads a token at TOKEN_JSON (default: token.json).
-    Requires client secret JSON: GOOGLE_OAUTH_CLIENT_SECRET_JSON env var.
+    Uses OAuth flow. Loads token from TOKEN_JSON (default: token.json) or runs OAuth flow.
+    Requires GOOGLE_OAUTH_CLIENT_SECRET_JSON env var (file path or JSON string).
     """
     client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_JSON")
-    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-    token_path = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "token.json")
-
     if not client_secret:
         raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRET_JSON is not set. Check your .env file or Render environment variables.")
 
-    # Determine if client_secret is a file path or JSON string
+    token_path = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "token.json")
+    creds = None
+
+    # Load previously saved token if present
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+    # Parse client secret (file or JSON string)
+    client_config = None
     try:
-        # Try parsing as JSON (for Render)
+        # Try parsing as JSON string (for Render)
         client_config = json.loads(client_secret)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError:
         # Assume it's a file path (for local development)
         if not os.path.isfile(client_secret):
             raise RuntimeError(f"Client secret JSON file not found at: {client_secret}")
         with open(client_secret, "r") as f:
             client_config = json.load(f)
 
-    # Load credentials
-    creds = None
-    if refresh_token:
-        # Use refresh token for non-interactive authentication (Render)
-        creds = Credentials(
-            token=None,
-            refresh_token=refresh_token,
-            client_id=client_config["installed"]["client_id"],
-            client_secret=client_config["installed"]["client_secret"],
-            token_uri="https://oauth2.googleapis.com/token",
-            scopes=SCOPES
-        )
-    else:
-        # Local development: load from token.json or run OAuth flow
-        if os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    # Extract client details (support both "installed" and "web")
+    client_type = next((k for k in ["web", "installed"] if k in client_config), None)
+    if not client_type:
+        raise ValueError("Invalid client configuration: missing 'web' or 'installed' section")
+    
+    client_id = client_config[client_type].get("client_id")
+    client_secret_value = client_config[client_type].get("client_secret")
+    if not client_id or not client_secret_value:
+        raise ValueError("Invalid client configuration: missing client_id or client_secret")
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                from google.auth.transport.requests import Request
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(client_secret, SCOPES)
+    # If no (valid) token, run the local server OAuth flow (local only)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            if not os.getenv("RENDER"):  # Skip interactive flow in Render
+                flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
                 creds = flow.run_local_server(port=0)
-                with open(token_path, "w") as f:
-                    f.write(creds.to_json())
+            else:
+                raise RuntimeError("No valid credentials and interactive flow disabled in Render. Set GOOGLE_REFRESH_TOKEN.")
+        
+        with open(token_path, "w") as f:
+            f.write(creds.to_json())
 
     return creds
 
@@ -88,7 +89,6 @@ def upload_to_drive(local_path: str,
     link = file.get("webViewLink")
 
     if make_public:
-        # Your personal Drive may or may not allow public links. If allowed:
         try:
             service.permissions().create(
                 fileId=file_id,
