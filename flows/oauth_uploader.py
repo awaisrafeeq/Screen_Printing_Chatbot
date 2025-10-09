@@ -14,17 +14,15 @@ def _get_creds() -> Credentials:
     """
     Uses OAuth flow. Loads token from TOKEN_JSON (default: token.json) or runs OAuth flow.
     Requires GOOGLE_OAUTH_CLIENT_SECRET_JSON env var (file path or JSON string).
+    Uses GOOGLE_REFRESH_TOKEN for non-interactive auth in Render.
     """
     client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_JSON")
-    if not client_secret:
-        raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRET_JSON is not set. Check your .env file or Render environment variables.")
-
+    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
     token_path = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "token.json")
     creds = None
 
-    # Load previously saved token if present
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    if not client_secret:
+        raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRET_JSON is not set. Check your .env file or Render environment variables.")
 
     # Parse client secret (file or JSON string)
     client_config = None
@@ -38,7 +36,7 @@ def _get_creds() -> Credentials:
         with open(client_secret, "r") as f:
             client_config = json.load(f)
 
-    # Extract client details (support both "installed" and "web")
+    # Extract client details (support both "web" and "installed")
     client_type = next((k for k in ["web", "installed"] if k in client_config), None)
     if not client_type:
         raise ValueError("Invalid client configuration: missing 'web' or 'installed' section")
@@ -48,11 +46,29 @@ def _get_creds() -> Credentials:
     if not client_id or not client_secret_value:
         raise ValueError("Invalid client configuration: missing client_id or client_secret")
 
-    # If no (valid) token, run the local server OAuth flow (local only)
+    # Load previously saved token if present
+    if os.path.exists(token_path):
+        with open(token_path, "r") as f:
+            creds_data = json.load(f)
+        creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+
+    # Use refresh token from env var if provided (e.g., Render)
+    if refresh_token and (not creds or creds.refresh_token != refresh_token):
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret_value,
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=SCOPES
+        )
+
+    # Refresh or run OAuth flow if needed
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
+            # Local development only: run interactive flow
             if not os.getenv("RENDER"):  # Skip interactive flow in Render
                 flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
                 creds = flow.run_local_server(port=0)
