@@ -56,7 +56,7 @@ def _get_creds() -> Credentials:
         creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
 
     # Use refresh token from env var if provided (e.g., Render)
-    if refresh_token and (not creds or creds.refresh_token != refresh_token):
+    if refresh_token:
         creds = Credentials(
             token=None,
             refresh_token=refresh_token,
@@ -70,7 +70,7 @@ def _get_creds() -> Credentials:
     # Validate and refresh if needed
     if creds:
         print(f"DEBUG: Initial creds valid: {creds.valid}")
-        if creds.expired and creds.refresh_token:
+        if not creds.valid and creds.refresh_token:
             try:
                 creds.refresh(Request())
                 print("DEBUG: Refreshed credentials successfully")
