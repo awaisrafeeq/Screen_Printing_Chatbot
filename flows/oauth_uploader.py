@@ -1,7 +1,7 @@
 # oauth_uploader.py
 import os
 from typing import Optional, Tuple
-
+import json
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -17,27 +17,49 @@ def _get_creds() -> Credentials:
     Requires client secret JSON: GOOGLE_OAUTH_CLIENT_SECRET_JSON env var.
     """
     client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_JSON")
-    if not client_secret or not os.path.isfile(client_secret):
-        raise RuntimeError("Set GOOGLE_OAUTH_CLIENT_SECRET_JSON to your downloaded OAuth client secret .json")
-
+    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
     token_path = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "token.json")
+
+    if not client_secret:
+        raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRET_JSON is not set. Check your .env file or Render environment variables.")
+
+    # Determine if client_secret is a file path or JSON string
+    try:
+        # Try parsing as JSON (for Render)
+        client_config = json.loads(client_secret)
+    except (json.JSONDecodeError, TypeError):
+        # Assume it's a file path (for local development)
+        if not os.path.isfile(client_secret):
+            raise RuntimeError(f"Client secret JSON file not found at: {client_secret}")
+        with open(client_secret, "r") as f:
+            client_config = json.load(f)
+
+    # Load credentials
     creds = None
+    if refresh_token:
+        # Use refresh token for non-interactive authentication (Render)
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            client_id=client_config["installed"]["client_id"],
+            client_secret=client_config["installed"]["client_secret"],
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=SCOPES
+        )
+    else:
+        # Local development: load from token.json or run OAuth flow
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
 
-    # Load previously saved token if present
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-
-    # If no (valid) token, run the local server OAuth flow
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            from google.auth.transport.requests import Request
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(client_secret, SCOPES)
-            # This opens a browser the first time; after that the token.json will be reused
-            creds = flow.run_local_server(port=0)
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                from google.auth.transport.requests import Request
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(client_secret, SCOPES)
+                creds = flow.run_local_server(port=0)
+                with open(token_path, "w") as f:
+                    f.write(creds.to_json())
 
     return creds
 
