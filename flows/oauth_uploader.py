@@ -8,7 +8,7 @@ from googleapiclient.http import MediaFileUpload
 from google.auth.transport.requests import Request
 
 # Scope lets us create files you own
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 def _get_creds() -> Credentials:
     """
