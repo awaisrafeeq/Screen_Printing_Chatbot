@@ -1,3 +1,4 @@
+
 # api.py - FastAPI endpoints for Screen Printing NW Chatbot
 import os
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -6,32 +7,24 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import uvicorn
 import uuid
-# Import your existing chatbot
 from main import ScreenPrintingChatbot
 from models.session_state import ConversationState 
 
-# Initialize FastAPI app
 app = FastAPI(
     title="Screen Printing NW Chatbot API",
     description="Conversational AI for quote requests and product questions",
     version="1.0.0"
 )
 
-# Add CORS middleware to allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific domains
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize chatbot instance
 chatbot = ScreenPrintingChatbot()
-
-# ============================================
-# REQUEST/RESPONSE MODELS
-# ============================================
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique session identifier for the user")
@@ -53,7 +46,7 @@ class ChatResponse(BaseModel):
     classified_intent: Optional[str] = Field(None, description="Classified user intent")
     conversation_ended: bool = Field(..., description="Whether conversation has ended")
     error: Optional[str] = Field(None, description="Error message if success=false")
-    context_data: Optional[Dict[str, Any]] = Field(None, description="Additional context data, e.g., upload flags")  # ADDED
+    context_data: Optional[Dict[str, Any]] = Field(None, description="Additional context data, e.g., upload flags")
     
     class Config:
         json_schema_extra = {
@@ -63,9 +56,9 @@ class ChatResponse(BaseModel):
                 "session_id": "user_12345",
                 "current_state": "ORDER_CONTACT",
                 "classified_intent": "Place order",
-                "conversation_ended": False,
+                "conversation_ended": false,
                 "error": None,
-                "context_data": {  # ADDED
+                "context_data": {
                     "awaiting_upload": False,
                     "upload_key": None
                 }
@@ -109,10 +102,6 @@ class UploadResponse(BaseModel):
             }
         }
 
-# ============================================
-# ENDPOINTS
-# ============================================
-
 @app.get("/")
 async def root():
     """Health check endpoint"""
@@ -137,25 +126,21 @@ async def chat(request: ChatRequest):
     Main chat endpoint - processes user messages and returns bot responses
     """
     try:
-        # Validate session_id
         if not request.session_id or len(request.session_id) < 3:
             raise HTTPException(
                 status_code=400,
                 detail="session_id must be at least 3 characters"
             )
 
-        # Process message with chatbot (uses main.py logic)
         result = await chatbot.chat(
             session_id=request.session_id,
             user_message=request.message
         )
 
-        # Get session state to include context_data
         from services.session_manager import SessionManager
         session_manager = SessionManager()
         state = session_manager.get_session(request.session_id)
 
-        # Ensure response matches main.py output format
         return ChatResponse(
             success=result["success"],
             response=result["response"],
@@ -164,7 +149,7 @@ async def chat(request: ChatRequest):
             classified_intent=result.get("classified_intent"),
             conversation_ended=result.get("conversation_ended", False),
             error=result.get("error"),
-            context_data=state.context_data if state else {}  # ADDED
+            context_data=state.context_data if state else {}
         )
 
     except Exception as e:
@@ -176,7 +161,7 @@ async def chat(request: ChatRequest):
             classified_intent=None,
             conversation_ended=False,
             error=str(e),
-            context_data={}  # ADDED
+            context_data={}
         )
 
 @app.post("/api/session/new", response_model=NewSessionResponse)
@@ -188,7 +173,6 @@ async def create_new_session():
         import uuid
         session_id = f"session_{uuid.uuid4().hex[:12]}"
 
-        # Initialize session with welcome message
         result = await chatbot.chat(session_id=session_id, user_message="")
 
         return NewSessionResponse(
@@ -235,7 +219,7 @@ async def get_session_state(session_id: str):
                 "sizes": [{"size": s.size, "quantity": s.quantity} for s in state.order.sizes],
                 "delivery_option": state.order.delivery_option,
                 "delivery_address": state.order.delivery_address,
-                "context_data": state.context_data  # ADDED for consistency, though not strictly needed
+                "context_data": state.context_data
             },
             conversation_history=state.conversation_history[-10:]
         )
@@ -271,8 +255,7 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
         allowed_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.pdf', '.ai', '.eps', '.psd'}
         file_ext = os.path.splitext(file.filename)[1].lower()
 
-        # Initialize upload_key and select_message
-        upload_key = uuid.uuid4().hex
+        upload_key = ""
         select_message = "Select logo/artwork file"
 
         if file_ext not in allowed_extensions:
@@ -285,16 +268,9 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 error=f"File type {file_ext} not allowed. Allowed: {', '.join(allowed_extensions)}"
             )
 
-        # Initialize session manager and get state
         session_manager = SessionManager()
         state = session_manager.get_session(session_id)
 
-        # Update session with upload_key
-        state.context_data["upload_key"] = upload_key
-        state.add_message(role="assistant", content=f"{select_message} (key: {upload_key})")
-        session_manager.update_session(state)
-
-        # Save file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
             content = await file.read()
             tmp_file.write(content)
@@ -311,13 +287,13 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 make_public=make_public,
             )
 
-            # Update session with upload details and confirmation message
             state.context_data["logo_file_id"] = file_id
             state.context_data["logo_view_link"] = view_link
             state.context_data["logo_filename"] = file.filename
             state.context_data["logo_complete"] = True
+            state.context_data["awaiting_upload"] = False
             state.current_state = ConversationState.ORDER_LOGO
-            state.add_message(role="assistant", content="logo uploaded")
+            state.add_message(role="assistant", content="Upload complete. Moving to the next step...")
             session_manager.update_session(state)
 
             return UploadResponse(
@@ -337,7 +313,6 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
     except Exception as e:
-        # Update session with error message
         state.add_message(
             role="assistant",
             content=f"⚠️ I couldn't upload the file. Continuing without a logo. Error: {str(e)}"
@@ -351,10 +326,6 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
             confirmation_message="",
             error=f"Upload failed: {str(e)}"
         )
-
-# ============================================
-# RUN SERVER
-# ============================================
 
 if __name__ == "__main__":
     if not os.getenv("OPENAI_API_KEY"):
