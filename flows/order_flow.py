@@ -622,115 +622,50 @@ async def order_product_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
-
 async def order_logo_node(state: SessionState) -> SessionState:
-
-
-    # Allow mid-flow wants human / end
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
 
-    if state.context_data.get("logo_attempted") and not state.last_user_message:
+    if state.context_data.get("logo_question_shown") and not state.last_user_message:
         return state
 
+    if not state.context_data.get("logo_question_shown"):
+        state.context_data["logo_question_shown"] = True
+        state.current_state = ConversationState.ORDER_LOGO
+        # Generate a unique key for frontend to use with /api/upload
+        upload_key = uuid.uuid4().hex
+        state.context_data["upload_key"] = upload_key
+        state.context_data["awaiting_upload"] = True  # Flag for frontend to trigger upload UI
+        state.add_message(
+            role="assistant",
+            content=f"Please upload your logo/artwork file (key: {upload_key})."
+        )
+        state.last_user_message = ""
+        return state
 
-    # --- local helper: open native file dialog (force foreground) ---
-    def _pick_file_via_dialog() -> str | None:
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-
-            root = tk.Tk()
-            # Make a tiny invisible window that we can focus/raise
-            root.withdraw()
-            # Force to foreground / focus
-            try:
-                root.update_idletasks()
-                root.lift()
-                root.attributes("-topmost", True)
-                root.after(200, lambda: root.attributes("-topmost", False))  # keep topmost briefly
-                root.focus_force()
-            except Exception:
-                pass
-
-            # Important: pass parent=root so dialog is attached to our focused window
-            path = filedialog.askopenfilename(
-                parent=root,
-                title="Select logo/artwork file",
-                filetypes=[
-                    ("Image / Vector / PDF", "*.png;*.jpg;*.jpeg;*.svg;*.pdf;*.ai;*.eps;*.psd"),
-                    ("All files", "*.*"),
-                ],
-            )
-            try:
-                root.destroy()
-            except Exception:
-                pass
-            return path if path else None
-
-        except Exception:
-            # No Tk in this environment or some GUI error
-            return None
-    # ----------------------------------------------------------------
-
-    # Auto-open the dialog immediately on first entry
-    if not state.context_data.get("logo_attempted"):
-        state.context_data["logo_attempted"] = True
-
-        # Small UX ping so the user knows what's happening
-        state.add_message(role="assistant", content="📁 Opening file picker…")
-        # We don't pause; we continue and try the dialog right away.
-
-        # chosen = _pick_file_via_dialog()
-        chosen = await asyncio.to_thread(_pick_file_via_dialog)
-
-        if not chosen:
-            # User canceled, dialog behind (OS blocked), or headless → continue
+    if state.last_user_message:
+        txt = state.last_user_message.strip().lower()
+        if txt in {"skip", "no", "none"}:
             state.context_data["logo_complete"] = True
+            state.context_data["awaiting_upload"] = False
+            state.context_data["logo_question_shown"] = False  # Reset for potential re-entry
             state.add_message(
                 role="assistant",
-                content="(No logo selected) Continuing without a logo."
+                content="(No logo uploaded) Continuing without a logo."
+            )
+            state.last_user_message = ""
+            return state
+        else:
+            # Re-prompt for invalid input
+            state.add_message(
+                role="assistant",
+                content=f"Please upload your logo/artwork file (key: {state.context_data.get('upload_key', '')}) or say 'skip'."
             )
             state.last_user_message = ""
             return state
 
-        # Try to upload the selected file
-        try:
-            parent = os.getenv("GDRIVE_PARENT_FOLDER_ID", "").strip() or None
-            make_public = (os.getenv("GDRIVE_MAKE_PUBLIC", "false").lower() in {"1", "true", "yes"})
-            file_id, view_link = upload_to_drive(
-                chosen,
-                filename=None,
-                parent_folder_id=parent,
-                make_public=make_public,
-            )
-            state.context_data["logo_file_id"] = file_id
-            state.context_data["logo_view_link"] = view_link
-            state.context_data["logo_filename"] = os.path.basename(chosen)
-            state.context_data["logo_complete"] = True
-
-            link_text = f"\nLink: {view_link}" if view_link else ""
-            state.add_message(
-                role="assistant",
-                content=f"✅ Logo uploaded to Google Drive as **{state.context_data['logo_filename']}**.{link_text}"
-            )
-        except Exception:
-            state.context_data["logo_complete"] = True
-            state.add_message(
-                role="assistant",
-                content=(
-                    "⚠️ I couldn't upload the file. Continuing without a logo. "
-                    "Please verify Drive credentials (GDRIVE_SERVICE_ACCOUNT_JSON) and folder access."
-                ),
-            )
-
-        state.last_user_message = ""
-        return state
-
-    # Re-entry safety: don't reopen the dialog; just advance
-    state.context_data["logo_complete"] = True
     state.last_user_message = ""
     return state
 
