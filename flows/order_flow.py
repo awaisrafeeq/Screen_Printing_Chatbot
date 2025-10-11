@@ -629,15 +629,21 @@ async def order_logo_node(state: SessionState) -> SessionState:
         return state
 
     if state.context_data.get("logo_question_shown") and not state.last_user_message:
+        # Check if upload is complete via the confirmation message
+        if any(msg["content"] == "Upload complete. Moving to the next step..." for msg in state.conversation_history):
+            state.context_data["logo_complete"] = True
+            state.context_data["awaiting_upload"] = False
+            state.context_data["logo_question_shown"] = False
+            state.last_user_message = ""
+            return state
         return state
 
     if not state.context_data.get("logo_question_shown"):
         state.context_data["logo_question_shown"] = True
         state.current_state = ConversationState.ORDER_LOGO
-        # Generate a unique key for frontend to use with /api/upload
         upload_key = uuid.uuid4().hex
         state.context_data["upload_key"] = upload_key
-        state.context_data["awaiting_upload"] = True  # Flag for frontend to trigger upload UI
+        state.context_data["awaiting_upload"] = True
         state.add_message(
             role="assistant",
             content=f"Please upload your logo/artwork file (key: {upload_key})."
@@ -650,7 +656,7 @@ async def order_logo_node(state: SessionState) -> SessionState:
         if txt in {"skip", "no", "none"}:
             state.context_data["logo_complete"] = True
             state.context_data["awaiting_upload"] = False
-            state.context_data["logo_question_shown"] = False  # Reset for potential re-entry
+            state.context_data["logo_question_shown"] = False
             state.add_message(
                 role="assistant",
                 content="(No logo uploaded) Continuing without a logo."
@@ -658,7 +664,6 @@ async def order_logo_node(state: SessionState) -> SessionState:
             state.last_user_message = ""
             return state
         else:
-            # Re-prompt for invalid input
             state.add_message(
                 role="assistant",
                 content=f"Please upload your logo/artwork file (key: {state.context_data.get('upload_key', '')}) or say 'skip'."
