@@ -56,7 +56,7 @@ class ChatResponse(BaseModel):
                 "session_id": "user_12345",
                 "current_state": "ORDER_CONTACT",
                 "classified_intent": "Place order",
-                "conversation_ended": false,
+                "conversation_ended": False,
                 "error": None,
                 "context_data": {
                     "awaiting_upload": False,
