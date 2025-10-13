@@ -13,8 +13,10 @@ from flows.oauth_uploader import upload_to_drive
 from services.session_manager import SessionManager
 import tempfile
 from main import ScreenPrintingChatbot
-from main import get_session_manager
+from main import ScreenPrintingChatbot, get_session_manager  # ✅ Import the function
 
+chatbot = ScreenPrintingChatbot()
+session_manager = get_session_manager() 
 
 app = FastAPI(
     title="Screen Printing NW Chatbot API",
@@ -30,8 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-chatbot = ScreenPrintingChatbot()
-session_manager = get_session_manager()
+# chatbot = ScreenPrintingChatbot()
+# session_manager = get_session_manager()
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique session identifier for the user")
