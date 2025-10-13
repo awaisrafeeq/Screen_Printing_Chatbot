@@ -9,6 +9,10 @@ import uvicorn
 import uuid
 from main import ScreenPrintingChatbot
 from models.session_state import ConversationState 
+from flows.oauth_uploader import upload_to_drive
+from services.session_manager import SessionManager
+import tempfile
+from main import ScreenPrintingChatbot, get_session_manager
 
 app = FastAPI(
     title="Screen Printing NW Chatbot API",
@@ -25,6 +29,7 @@ app.add_middleware(
 )
 
 chatbot = ScreenPrintingChatbot()
+session_manager = get_session_manager()
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique session identifier for the user")
@@ -83,7 +88,9 @@ class UploadResponse(BaseModel):
     upload_key: str = Field(..., description="Unique key for the upload request")
     file_details: Dict[str, Optional[str]] = Field(..., description="Details of the uploaded file")
     confirmation_message: str = Field(..., description="Confirmation message after upload")
+    next_response: Optional[str] = Field(None, description="Next question from chatbot")  # ✅ ADD THIS
     error: Optional[str] = Field(None, description="Error message if success=false")
+
 
     class Config:
         json_schema_extra = {
@@ -136,9 +143,7 @@ async def chat(request: ChatRequest):
             session_id=request.session_id,
             user_message=request.message
         )
-
-        from services.session_manager import SessionManager
-        session_manager = SessionManager()
+        # session_manager = SessionManager()
         state = session_manager.get_session(request.session_id)
 
         return ChatResponse(
@@ -189,8 +194,7 @@ async def get_session_state(session_id: str):
     Get current state of a session
     """
     try:
-        from services.session_manager import SessionManager
-        session_manager = SessionManager()
+        # session_manager = SessionManager()
         state = session_manager.get_session(session_id)
 
         return SessionStateResponse(
@@ -232,8 +236,7 @@ async def delete_session(session_id: str):
     Delete/end a session
     """
     try:
-        from services.session_manager import SessionManager
-        session_manager = SessionManager()
+        # session_manager = SessionManager()
         if session_id in session_manager.sessions:
             del session_manager.sessions[session_id]
             return {"success": True, "message": f"Session {session_id} deleted"}
@@ -245,12 +248,9 @@ async def delete_session(session_id: str):
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload_file(session_id: str, file: UploadFile = File(...)):
     """
-    Upload logo/artwork file for a session
+    Upload logo/artwork file for a session and return next question
     """
     try:
-        from flows.oauth_uploader import upload_to_drive
-        from services.session_manager import SessionManager
-        import tempfile
 
         allowed_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.pdf', '.ai', '.eps', '.psd'}
         file_ext = os.path.splitext(file.filename)[1].lower()
@@ -268,7 +268,7 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 error=f"File type {file_ext} not allowed. Allowed: {', '.join(allowed_extensions)}"
             )
 
-        session_manager = SessionManager()
+        # session_manager = SessionManager()
         state = session_manager.get_session(session_id)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
@@ -287,14 +287,21 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 make_public=make_public,
             )
 
+            # ✅ Update state with upload details
             state.context_data["logo_file_id"] = file_id
             state.context_data["logo_view_link"] = view_link
             state.context_data["logo_filename"] = file.filename
-            state.context_data["logo_complete"] = True
-            state.context_data["awaiting_upload"] = False
-            state.current_state = ConversationState.ORDER_LOGO
-            state.add_message(role="assistant", content="Upload complete. Moving to the next step...")
+            state.context_data["logo_complete"] = True  # Mark as complete
+            state.context_data["awaiting_upload"] = False  # No longer waiting
+            # ✅ KEEP logo_question_shown as True (don't reset it!)
+            
             session_manager.update_session(state)
+
+            # ✅ Call chatbot to get the next question
+            next_response = await chatbot.chat(
+                session_id=session_id,
+                user_message=""  # Empty message triggers next step
+            )
 
             return UploadResponse(
                 success=True,
@@ -306,23 +313,29 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                     "view_link": view_link,
                     "filename": file.filename
                 },
-                confirmation_message="logo uploaded",
-                error=None
+                confirmation_message=f"✅ {file.filename} uploaded successfully",
+                error=None,
+                next_response=next_response["response"]  # Return next question
             )
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+                
     except Exception as e:
-        state.add_message(
-            role="assistant",
-            content=f"⚠️ I couldn't upload the file. Continuing without a logo. Error: {str(e)}"
-        )
+        # session_manager = SessionManager()
+        state = session_manager.get_session(session_id)
+        
+        # Mark logo as skipped and continue
+        state.context_data["logo_complete"] = True
+        state.context_data["awaiting_upload"] = False
+        
         session_manager.update_session(state)
+        
         return UploadResponse(
             success=False,
             select_message=select_message,
             upload_key=upload_key,
-            file_details={"path": "", "file_id": "", "view_link": "", "filename": file.filename},
+            file_details={"path": "", "file_id": "", "view_link": "", "filename": file.filename or ""},
             confirmation_message="",
             error=f"Upload failed: {str(e)}"
         )
