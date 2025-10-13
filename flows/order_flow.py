@@ -622,57 +622,75 @@ async def order_product_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
+
 async def order_logo_node(state: SessionState) -> SessionState:
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
 
-    if state.context_data.get("logo_question_shown") and not state.last_user_message:
-        # Check if upload is complete via the confirmation message
-        if any(msg["content"] == "Upload complete. Moving to the next step..." for msg in state.conversation_history):
-            state.context_data["logo_complete"] = True
-            state.context_data["awaiting_upload"] = False
-            state.context_data["logo_question_shown"] = False
-            state.last_user_message = ""
-            return state
+    # ✅ FIRST CHECK: If logo is complete, exit immediately
+    if state.context_data.get("logo_complete"):
+        print(f"DEBUG order_logo_node: logo_complete=True, exiting")
+        state.last_user_message = ""
         return state
 
+    # If question was shown and we're waiting for response
+    if state.context_data.get("logo_question_shown") and not state.last_user_message:
+        print(f"DEBUG order_logo_node: waiting for user response")
+        return state
+
+    # Show question first time
     if not state.context_data.get("logo_question_shown"):
+        print(f"DEBUG order_logo_node: showing logo question")
         state.context_data["logo_question_shown"] = True
-        state.current_state = ConversationState.ORDER_LOGO
         upload_key = uuid.uuid4().hex
         state.context_data["upload_key"] = upload_key
         state.context_data["awaiting_upload"] = True
         state.add_message(
             role="assistant",
-            content=f"Please upload your logo/artwork file (key: {upload_key})."
+            content=(
+                "Please upload your logo/artwork file.\n"
+                "Supported formats: PNG, JPG, SVG, PDF, AI, EPS, PSD\n"
+                "Or type **Skip** if you don't have a logo yet."
+            )
         )
         state.last_user_message = ""
         return state
 
+    # Handle user input
     if state.last_user_message:
         txt = state.last_user_message.strip().lower()
-        if txt in {"skip", "no", "none"}:
+        print(f"DEBUG order_logo_node: user message = '{txt}'")
+        
+        # ✅ Handle "continue" from upload endpoint
+        if txt == "continue":
+            # Upload already completed, just check the flag
+            if state.context_data.get("logo_complete"):
+                print(f"DEBUG: continue message + logo_complete, moving forward")
+                state.last_user_message = ""
+                return state
+        
+        if txt in {"skip", "no", "none", "no logo"}:
             state.context_data["logo_complete"] = True
             state.context_data["awaiting_upload"] = False
-            state.context_data["logo_question_shown"] = False
             state.add_message(
                 role="assistant",
-                content="(No logo uploaded) Continuing without a logo."
+                content="No problem! Continuing without a logo."
             )
             state.last_user_message = ""
             return state
         else:
             state.add_message(
                 role="assistant",
-                content=f"Please upload your logo/artwork file (key: {state.context_data.get('upload_key', '')}) or say 'skip'."
+                content="Please upload your logo file using the button, or type **Skip**."
             )
             state.last_user_message = ""
             return state
 
     state.last_user_message = ""
     return state
+
 
 async def order_decoration_location_node(state: SessionState) -> SessionState:
     """Ask where the decoration/print will be placed"""
@@ -1098,9 +1116,21 @@ def route_order_flow(state: SessionState) -> str:
                ("order_product" if not state.context_data.get("product_question_shown") else "end")
 
     # LOGO step (optional)
+    # if not state.context_data.get("logo_complete"):
+    #     return "order_logo" if state.context_data.get("logo_question_shown") and state.last_user_message else \
+    #            ("order_logo" if not state.context_data.get("logo_question_shown") else "end")
+    # LOGO step - check complete flag FIRST
     if not state.context_data.get("logo_complete"):
-        return "order_logo" if state.context_data.get("logo_question_shown") and state.last_user_message else \
-               ("order_logo" if not state.context_data.get("logo_question_shown") else "end")
+        print(f"DEBUG router: logo not complete, checking state...")
+        if state.context_data.get("logo_question_shown") and state.last_user_message:
+            return "order_logo"
+        elif not state.context_data.get("logo_question_shown"):
+            return "order_logo"
+        else:
+            return "end"  # Waiting for response
+    
+    print(f"DEBUG router: logo complete, moving to decoration_location")
+
 # ADD THESE SECTIONS:
     if not state.context_data.get("decoration_location_complete"):
         return "order_decoration_location" if state.context_data.get("decoration_location_shown") and state.last_user_message else \
