@@ -1,22 +1,21 @@
-
-# api.py - FastAPI endpoints for Screen Printing NW Chatbot
 import os
+import uuid
+import tempfile
+from typing import Optional, Dict, Any
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
 import uvicorn
-import uuid
-from main import ScreenPrintingChatbot
+
+# ✅ Clean imports - import each thing ONCE
+from main import ScreenPrintingChatbot, get_session_manager
 from models.session_state import ConversationState 
 from flows.oauth_uploader import upload_to_drive
-from services.session_manager import SessionManager
-import tempfile
-from main import ScreenPrintingChatbot
-from main import ScreenPrintingChatbot, get_session_manager  # ✅ Import the function
 
+# ✅ Initialize AFTER imports
 chatbot = ScreenPrintingChatbot()
-session_manager = get_session_manager() 
+session_manager = get_session_manager()
 
 app = FastAPI(
     title="Screen Printing NW Chatbot API",
@@ -31,9 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# chatbot = ScreenPrintingChatbot()
-# session_manager = get_session_manager()
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique session identifier for the user")
