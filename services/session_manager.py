@@ -14,6 +14,9 @@ class SessionManager:
             self.sessions[session_id] = SessionState(session_id=session_id)
         return self.sessions[session_id]
     
+    # def update_session(self, session_state: SessionState):
+    #     """Update session in storage"""
+    #     self.sessions[session_state.session_id] = session_state
     def update_session(self, session_state: SessionState):
-        """Update session in storage"""
+        print(f"Updating session {session_state.session_id} with state {session_state.current_state}")
         self.sessions[session_state.session_id] = session_state
