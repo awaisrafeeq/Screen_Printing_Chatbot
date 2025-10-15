@@ -8,7 +8,7 @@ from models.session_state import (
     SessionState,
     ConversationState,
     Intent,
-    SizeQuantity,
+    SizeQuantity, OrderDetails
 )
 from services.intent_classifier import IntentClassifier
 import os
@@ -1062,82 +1062,22 @@ async def order_delivery_address_node(state: SessionState) -> SessionState:
     return state
 
 async def order_summary_node(state: SessionState) -> SessionState:
-
+    
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
     
     if state.last_user_message == "__RESUME__":
-        state.last_user_message = ""  # Clear it
-        state.context_data["summary_shown"] = False  
+        state.last_user_message = ""
+        state.context_data["summary_shown"] = False
 
-    if state.context_data.get("summary_shown") and not state.last_user_message:
-        return state
-
-    summary_md = _render_summary_text(state)
-    state.context_data["summary_text"] = summary_md  # store for email on confirm
-
-    state.add_message(
-        role="assistant",
-        content=summary_md + (
-            "\n\nIf this looks good, reply **Confirm**. To change anything, say for example "
-            "`Change color to Black` or `Update quantity to 50`."
-        )
-    )
-    state.context_data["summary_shown"] = True
-    state.last_user_message = ""
-    return state
-
-# ---------- Router ----------
-def route_order_flow(state: SessionState) -> str:
-    """
-    Router hub that determines next order step.
-    Handles resumption from interrupts.
-    """
-    # CRITICAL: Check if interrupt just happened
-    if state.context_data.get("order_interrupted"):
-        # Don't route to order steps - let the graph handle the interrupt
-        current = state.current_state.value
-        
-        if current == "HAS_QUESTIONS_ABOUT_PRODUCT":
-            return "end"  # Pause, product_questions will be entered on next invocation
-        elif current == "WANTS_HUMAN":
-            return "wants_human"
-        elif current == "END":
-            return "end_conversation"
-        
-    # Special handling: If just resumed from interrupt, re-enter current step
-    if state.context_data.get("just_resumed_from_interrupt"):
-        state.context_data["just_resumed_from_interrupt"] = False
-        # Return to the step that was interrupted
-        current = state.current_state.value
-        if current == "ORDER_CONTACT":
-            # Check which sub-step within contact flow
-            if not state.context_data.get("contact_complete"):
-                if state.context_data.get("contact_question_shown"):
-                    return "end"  # Wait for contact info
-                return "order_contact"
-        # Map other states similarly
-        step_map = {
-            "ORDER_ORGANIZATION": "order_organization",
-            "ORDER_TYPE": "order_type",
-            "ORDER_BUDGET": "order_budget",
-            "ORDER_SERVICE": "order_service",
-            "ORDER_APPAREL": "order_apparel",
-            "ORDER_PRODUCT": "order_product",
-            "ORDER_LOGO": "order_logo",
-            "ORDER_QUANTITY": "order_quantity",
-            "ORDER_SIZES": "order_sizes",
-            "ORDER_DELIVERY": "order_delivery",
-        }
-        if current in step_map:
-            return step_map[current]
-    
-    # If we've shown the summary, only handle "confirm"
+    # Check if we're waiting for confirmation
     if state.context_data.get("summary_shown"):
         if state.last_user_message:
             txt = state.last_user_message.strip().lower()
+            
+            # User confirmed!
             if txt in {"confirm", "confirmed", "yes", "y"} or "confirm" in txt:
                 ok = _send_summary_to_customer(state)
                 if ok:
@@ -1150,69 +1090,235 @@ def route_order_flow(state: SessionState) -> str:
                         role="assistant",
                         content="✅ Confirmed! I couldn't send the email automatically, but your summary is above."
                     )
-                state.current_state = ConversationState.END
-                return "end_conversation"
-        return "end"
+                
+                # Ask what they want to do next
+                state.add_message(
+                    role="assistant",
+                    content=(
+                        "What would you like to do next?\n\n"
+                        "• **New order** - Place another quote request\n"
+                        "• **End** - Finish our chat"
+                    )
+                )
+                
+                # Move to post-confirmation state
+                state.current_state = ConversationState.ORDER_POST_CONFIRMATION
+                state.context_data["summary_shown"] = False
+                state.last_user_message = ""
+                return state
+            
+            # User wants to change something
+            else:
+                state.add_message(
+                    role="assistant",
+                    content="To change details, please specify what you'd like to update. For example: `Change color to Black` or `Update quantity to 50`."
+                )
+                state.last_user_message = ""
+                return state
+        
+        return state  # Still waiting for confirmation
+
+    # First time showing summary
+    if not state.context_data.get("summary_shown"):
+        summary_md = _render_summary_text(state)
+        state.context_data["summary_text"] = summary_md
+
+        state.add_message(
+            role="assistant",
+            content=summary_md + (
+                "\n\nIf this looks good, reply **Confirm**. To change anything, say for example "
+                "`Change color to Black` or `Update quantity to 50`."
+            )
+        )
+        state.context_data["summary_shown"] = True
+        state.last_user_message = ""
+        return state
+
+    state.last_user_message = ""
+    return state
+
+async def order_post_confirmation_node(state: SessionState) -> SessionState:
+    """Handle post-order confirmation - ask what user wants to do next"""
+    
+    # First time entering
+    if not state.context_data.get("post_order_question_shown"):
+        state.context_data["post_order_question_shown"] = True
+        state.last_user_message = ""
+        return state
+    
+    # Process user choice
+    if state.last_user_message:
+        txt = state.last_user_message.strip().lower()
+        
+        # User wants to place another order
+        if any(word in txt for word in ["order", "quote", "new", "another", "yes", "continue", "main"]):
+            from models.session_state import OrderDetails
+            
+            # Clear everything
+            state.context_data = {}
+            state.order = OrderDetails()
+            state.interrupted_from = None
+            state.classified_intent = None
+            
+            # Set state to MAIN_MENU
+            state.current_state = ConversationState.MAIN_MENU
+            
+            # ✅ Add the main menu message immediately
+            state.add_message(
+                role="assistant",
+                content=(
+                    "Great! I'd love to help with any questions you have. "
+                    "I can also help you place a quote request if you want pricing.\n\n"
+                    "How can I help you?"
+                ),
+            )
+            
+            state.last_user_message = ""
+            return state
+        
+        # User wants to end
+        elif any(word in txt for word in ["end", "bye", "goodbye", "done", "finish", "no"]):
+            state.current_state = ConversationState.END
+            state.add_message(
+                role="assistant",
+                content="Thank you for choosing Screen Printing NW! We'll be in touch soon. Have a great day! 👋"
+            )
+            state.last_user_message = ""
+            return state
+        
+        else:
+            state.add_message(
+                role="assistant",
+                content="Please reply:\n• **New order** to place another quote request\n• **End** to finish our chat"
+            )
+            state.last_user_message = ""
+            return state
+    
+    state.last_user_message = ""
+    return state
 
 
+def route_from_post_confirmation(state: SessionState) -> str:
+    """Route from post-confirmation node"""
+    if state.current_state == ConversationState.MAIN_MENU:
+        return "main_menu"
+    elif state.current_state == ConversationState.END:
+        return "end_conversation"
+    return "end"  # Still waiting for choice
+
+
+# ---------- Router ----------
+def route_order_flow(state: SessionState) -> str:
+    """
+    Router hub that determines next order step.
+    Handles resumption from interrupts.
+    """
+  
+    if state.context_data.get("order_interrupted"):
+        current = state.current_state.value
+        
+        if current == "HAS_QUESTIONS_ABOUT_PRODUCT":
+            return "end"
+        elif current == "WANTS_HUMAN":
+            return "wants_human"
+        elif current == "END":
+            return "end_conversation"
+        
+    # 4. Check if just resumed from interrupt
+    if state.context_data.get("just_resumed_from_interrupt"):
+        state.context_data["just_resumed_from_interrupt"] = False
+        current = state.current_state.value
+        step_map = {
+            "ORDER_CONTACT": "order_contact",
+            "ORDER_ORGANIZATION": "order_organization",
+            "ORDER_TYPE": "order_type",
+            "ORDER_BUDGET": "order_budget",
+            "ORDER_SERVICE": "order_service",
+            "ORDER_APPAREL": "order_apparel",
+            "ORDER_PRODUCT": "order_product",
+            "ORDER_LOGO": "order_logo",
+            "ORDER_DECORATION_LOCATION": "order_decoration_location",
+            "ORDER_DECORATION_COLORS": "order_decoration_colors",
+            "ORDER_QUANTITY": "order_quantity",
+            "ORDER_SIZES": "order_sizes",
+            "ORDER_DELIVERY": "order_delivery",
+        }
+        if current in step_map:
+            return step_map[current]
+
+    # 5. Regular order flow routing
     if not state.context_data.get("contact_complete"):
-        return "order_contact" if state.context_data.get("contact_question_shown") and state.last_user_message else \
-               ("order_contact" if not state.context_data.get("contact_question_shown") else "end")
+        state.current_state = ConversationState.ORDER_CONTACT  # ✅ Set state
+        if state.context_data.get("contact_question_shown") and state.last_user_message:
+            return "order_contact"
+        elif not state.context_data.get("contact_question_shown"):
+            return "order_contact"
+        else:
+            return "end"
 
     if not state.context_data.get("org_complete"):
-        return "order_organization" if state.context_data.get("org_question_shown") and state.last_user_message else \
-               ("order_organization" if not state.context_data.get("org_question_shown") else "end")
+        state.current_state = ConversationState.ORDER_ORGANIZATION  # ✅ Set state
+        if state.context_data.get("org_question_shown") and state.last_user_message:
+            return "order_organization"
+        elif not state.context_data.get("org_question_shown"):
+            return "order_organization"
+        else:
+            return "end"
 
     if not state.context_data.get("type_complete"):
+        state.current_state = ConversationState.ORDER_TYPE  # ✅ Set state
         return "order_type" if state.context_data.get("type_question_shown") and state.last_user_message else \
                ("order_type" if not state.context_data.get("type_question_shown") else "end")
 
     if not state.context_data.get("budget_complete"):
+        state.current_state = ConversationState.ORDER_BUDGET  # ✅ Set state
         return "order_budget" if state.context_data.get("budget_question_shown") and state.last_user_message else \
                ("order_budget" if not state.context_data.get("budget_question_shown") else "end")
 
     if not state.context_data.get("service_complete"):
+        state.current_state = ConversationState.ORDER_SERVICE  # ✅ Set state
         return "order_service" if state.context_data.get("service_question_shown") and state.last_user_message else \
                ("order_service" if not state.context_data.get("service_question_shown") else "end")
 
     if not state.context_data.get("apparel_complete"):
+        state.current_state = ConversationState.ORDER_APPAREL  # ✅ Set state
         return "order_apparel" if state.context_data.get("apparel_question_shown") and state.last_user_message else \
                ("order_apparel" if not state.context_data.get("apparel_question_shown") else "end")
 
     if not state.context_data.get("product_complete"):
+        state.current_state = ConversationState.ORDER_PRODUCT  # ✅ Set state
         return "order_product" if state.context_data.get("product_question_shown") and state.last_user_message else \
                ("order_product" if not state.context_data.get("product_question_shown") else "end")
 
-    # LOGO step (optional)
-    # if not state.context_data.get("logo_complete"):
-    #     return "order_logo" if state.context_data.get("logo_question_shown") and state.last_user_message else \
-    #            ("order_logo" if not state.context_data.get("logo_question_shown") else "end")
-    # LOGO step - check complete flag FIRST
     if not state.context_data.get("logo_complete"):
+        state.current_state = ConversationState.ORDER_LOGO  # ✅ Set state
         print(f"DEBUG router: logo not complete, checking state...")
         if state.context_data.get("logo_question_shown") and state.last_user_message:
             return "order_logo"
         elif not state.context_data.get("logo_question_shown"):
             return "order_logo"
         else:
-            return "end"  # Waiting for response
+            return "end"
     
     print(f"DEBUG router: logo complete, moving to decoration_location")
 
-# ADD THESE SECTIONS:
     if not state.context_data.get("decoration_location_complete"):
+        state.current_state = ConversationState.ORDER_DECORATION_LOCATION  # ✅ Set state
         return "order_decoration_location" if state.context_data.get("decoration_location_shown") and state.last_user_message else \
             ("order_decoration_location" if not state.context_data.get("decoration_location_shown") else "end")
 
     if not state.context_data.get("decoration_colors_complete"):
+        state.current_state = ConversationState.ORDER_DECORATION_COLORS  # ✅ Set state
         return "order_decoration_colors" if state.context_data.get("decoration_colors_shown") and state.last_user_message else \
             ("order_decoration_colors" if not state.context_data.get("decoration_colors_shown") else "end")
 
     if not state.context_data.get("qty_complete"):
+        state.current_state = ConversationState.ORDER_QUANTITY  # ✅ Set state
         return "order_quantity" if state.context_data.get("qty_question_shown") and state.last_user_message else \
                ("order_quantity" if not state.context_data.get("qty_question_shown") else "end")
 
     if not state.context_data.get("sizes_complete"):
+        state.current_state = ConversationState.ORDER_SIZES  # ✅ Set state
         if state.context_data.get("sizes_pending") and state.last_user_message:
             txt = state.last_user_message.strip().lower()
             if "use sizes total" in txt:
@@ -1225,10 +1331,14 @@ def route_order_flow(state: SessionState) -> str:
                ("order_sizes" if not state.context_data.get("sizes_question_shown") else "end")
 
     if not state.context_data.get("delivery_complete"):
+        state.current_state = ConversationState.ORDER_DELIVERY  # ✅ Set state
         if state.context_data.get("awaiting_address"):
+            state.current_state = ConversationState.ORDER_DELIVERY_ADDRESS  # ✅ Override if address needed
             return "order_delivery_address" if (state.context_data.get("address_question_shown") and state.last_user_message) else \
                    ("order_delivery_address" if not state.context_data.get("address_question_shown") else "end")
         return "order_delivery" if (state.context_data.get("delivery_question_shown") and state.last_user_message) else \
                ("order_delivery" if not state.context_data.get("delivery_question_shown") else "end")
 
+    # ✅ CRITICAL: Set state to ORDER_SUMMARY when everything is complete
+    state.current_state = ConversationState.ORDER_SUMMARY
     return "order_summary"
