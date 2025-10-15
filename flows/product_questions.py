@@ -3,6 +3,30 @@ from models.session_state import SessionState, ConversationState, Intent
 from flows.rag_system import retrieve_answer
 import asyncio
 
+# At the top of product_questions.py, after imports
+
+def _reset_question_flag_for_state(state: SessionState, conv_state: ConversationState):
+    """Reset the question_shown flag for a given conversation state"""
+    flag_map = {
+        ConversationState.ORDER_CONTACT: "contact_question_shown",
+        ConversationState.ORDER_ORGANIZATION: "org_question_shown",
+        ConversationState.ORDER_TYPE: "type_question_shown",
+        ConversationState.ORDER_BUDGET: "budget_question_shown",
+        ConversationState.ORDER_SERVICE: "service_question_shown",
+        ConversationState.ORDER_APPAREL: "apparel_question_shown",
+        ConversationState.ORDER_PRODUCT: "product_question_shown",
+        ConversationState.ORDER_LOGO: "logo_question_shown",
+        ConversationState.ORDER_DECORATION_LOCATION: "decoration_location_shown",
+        ConversationState.ORDER_DECORATION_COLORS: "decoration_colors_shown",
+        ConversationState.ORDER_QUANTITY: "qty_question_shown",
+        ConversationState.ORDER_SIZES: "sizes_question_shown",
+        ConversationState.ORDER_DELIVERY: "delivery_question_shown",
+    }
+    
+    flag = flag_map.get(conv_state)
+    if flag:
+        state.context_data[flag] = False
+
 async def product_questions_node(state: SessionState) -> SessionState:
     """Handle product-related questions using RAG system"""
     print("🤖 Product Questions Node - Using RAG")
@@ -11,13 +35,8 @@ async def product_questions_node(state: SessionState) -> SessionState:
     if not state.context_data.get("product_question_prompted"):
         # Check if interrupted from order flow
         if state.context_data.get("order_interrupted"):
-            state.add_message(
-                role="assistant",
-                content=(
-                    "Sure! I'll help answer your product questions. "
-                    "What would you like to know?"
-                ),
-            )
+            # ✅ Message already added in _check_interrupt, just mark as prompted
+            state.context_data["product_question_prompted"] = True
         else:
             state.add_message(
                 role="assistant",
@@ -32,7 +51,7 @@ async def product_questions_node(state: SessionState) -> SessionState:
                     "Just ask your question!"
                 ),
             )
-        state.context_data["product_question_prompted"] = True
+            state.context_data["product_question_prompted"] = True
         state.last_user_message = ""
         return state
     
@@ -73,26 +92,21 @@ async def product_questions_node(state: SessionState) -> SessionState:
                 # Get the interrupted state
                 resume_state = state.interrupted_from or ConversationState.ORDER_CONTACT
                 
-                # Clear interrupt flags FIRST
+                # ✅ Reset the question flag
+                _reset_question_flag_for_state(state, resume_state)
+                
+                # Clear interrupt flags
                 state.context_data["order_interrupted"] = False
                 state.context_data["awaiting_resume_decision"] = False
                 state.context_data["product_question_prompted"] = False
-                state.context_data["just_resumed_from_interrupt"] = True  # NEW FLAG
-
                 
-                # Important: Reset the current state BEFORE adding message
+                # Set the current state
                 state.current_state = resume_state
                 state.interrupted_from = None
                 
-                # Add transition message
-                state.add_message(
-                    role="assistant",
-                    content="Perfect! Let's continue with your order where we left off.",
-                )
-                
-                # DO NOT consume last_user_message here - let order node handle it
-                # This allows the order node to re-prompt if needed
-                state.last_user_message = ""  # Consume the "continue order" message
+                # ✅ Set a special trigger message that order nodes will ignore
+                # This ensures the router sends us to the order node
+                state.last_user_message = "__RESUME__"
                 
                 return state
             
