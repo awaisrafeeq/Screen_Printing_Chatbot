@@ -64,13 +64,20 @@ async def _check_interrupt(state: SessionState) -> Optional[ConversationState]:
             "contact_question_shown": state.context_data.get("contact_question_shown"),
             "org_question_shown": state.context_data.get("org_question_shown"),
             "type_question_shown": state.context_data.get("type_question_shown"),
-            # ... save all question_shown flags
         }
         
         state.classified_intent = Intent.HAS_QUESTIONS_ABOUT_PRODUCT
         state.current_state = ConversationState.HAS_QUESTIONS_ABOUT_PRODUCT
         state.context_data["intent_confidence"] = 0.95
         state.context_data["intent_reasoning"] = "keyword: product question during order"
+        
+        # ✅ ADD TRANSITION MESSAGE IMMEDIATELY
+        state.add_message(
+            role="assistant",
+            content="Sure! I'll help answer your product questions. What would you like to know?"
+        )
+        state.context_data["product_question_prompted"] = True  # Mark as prompted
+        
         return ConversationState.HAS_QUESTIONS_ABOUT_PRODUCT
 
     # Check for human escalation
@@ -83,6 +90,13 @@ async def _check_interrupt(state: SessionState) -> Optional[ConversationState]:
         state.current_state = ConversationState.WANTS_HUMAN
         state.context_data["intent_confidence"] = 1.0
         state.context_data["intent_reasoning"] = "keyword: wants human during order"
+        
+        # ✅ ADD TRANSITION MESSAGE
+        state.add_message(
+            role="assistant",
+            content="I'll connect you with someone from our team. They'll be in touch shortly."
+        )
+        
         return ConversationState.WANTS_HUMAN
 
     # Check for end conversation
@@ -95,18 +109,15 @@ async def _check_interrupt(state: SessionState) -> Optional[ConversationState]:
         state.current_state = ConversationState.END
         state.context_data["intent_confidence"] = 1.0
         state.context_data["intent_reasoning"] = "keyword: end conversation during order"
+        
+        # ✅ ADD TRANSITION MESSAGE
+        state.add_message(
+            role="assistant",
+            content="Thanks for chatting! Feel free to come back anytime you're ready to continue your order."
+        )
+        
         return ConversationState.END
     
-    # # Otherwise, classify but don't jump unless future logic needs it
-    # try:
-    #     result = await _classifier.classify_intent(text, context={"current_state": state.current_state.value})
-    #     # Store for debugging/telemetry only
-    #     state.context_data["intent_confidence"] = float(result.get("confidence", 0.0) or 0.0)
-    #     state.context_data["intent_reasoning"] = result.get("reasoning", "") or ""
-    #     # (We intentionally DO NOT change current_state here unless explicit keywords matched)
-    # except Exception:
-    #     pass
-
     return None
 
 def _render_summary_text(state: SessionState) -> str:
@@ -268,17 +279,22 @@ def parse_sizes(text: str) -> Dict[str, int]:
             sizes[key] = sizes.get(key, 0) + int(qty)
     return sizes
 
-# ---------- Order nodes ----------
+# ---------- Order nodes ----------------------------------=================================================================================================================----------------------------
 
 async def order_contact_node(state: SessionState) -> SessionState:
-
-    if state.context_data.get("contact_question_shown") and not state.last_user_message:
-        return state  # Question asked, waiting for response
 
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+        # ✅ Check for force reprompt (after resuming from interrupt)
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["contact_question_shown"] = False 
+
+    if state.context_data.get("contact_question_shown") and not state.last_user_message:
+        return state  # Question asked, waiting for response
 
     if not state.context_data.get("contact_question_shown"):
         state.add_message(
@@ -339,14 +355,18 @@ async def order_contact_node(state: SessionState) -> SessionState:
 
 async def order_organization_node(state: SessionState) -> SessionState:
 
-    if state.context_data.get("org_question_shown") and not state.last_user_message:
-        return state
-
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
-    
+
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["org_question_shown"] = False  # Force re-show
+
+    if state.context_data.get("org_question_shown") and not state.last_user_message:
+        return state
+
     if not state.context_data.get("org_question_shown"):
         state.add_message(
             role="assistant",
@@ -381,7 +401,11 @@ async def order_type_node(state: SessionState) -> SessionState:
     if interrupt:
         state.last_user_message = ""
         return state
-    
+        # ✅ Check for force reprompt (after resuming from interrupt)
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["type_question_shown"] = False 
+
     if state.context_data.get("type_question_shown") and not state.last_user_message:
         return state
     
@@ -425,11 +449,14 @@ async def order_type_node(state: SessionState) -> SessionState:
 
 async def order_budget_node(state: SessionState) -> SessionState:
 
-
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["budget_question_shown"] = False
 
     if state.context_data.get("budget_question_shown") and not state.last_user_message:
         return state
@@ -470,11 +497,14 @@ async def order_budget_node(state: SessionState) -> SessionState:
 
 async def order_service_node(state: SessionState) -> SessionState:
 
-
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["service_question_shown"] = False
 
     if state.context_data.get("service_question_shown") and not state.last_user_message:
         return state
@@ -523,6 +553,10 @@ async def order_apparel_node(state: SessionState) -> SessionState:
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["apparel_question_shown"] = False
 
     if state.context_data.get("apparel_question_shown") and not state.last_user_message:
         return state
@@ -579,15 +613,18 @@ async def order_apparel_node(state: SessionState) -> SessionState:
 
 async def order_product_node(state: SessionState) -> SessionState:
 
-    
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    # ✅ Check for force reprompt (after resuming from interrupt)
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["product_question_shown"] = False
 
     if state.context_data.get("product_question_shown") and not state.last_user_message:
         return state
-
 
     if not state.context_data.get("product_question_shown"):
         if state.order.product_name and not state.order.color:
@@ -622,22 +659,26 @@ async def order_product_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
-
 async def order_logo_node(state: SessionState) -> SessionState:
+
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    # ✅ Check for force reprompt (after resuming from interrupt)
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["logo_complete"] = False  
 
     # ✅ FIRST CHECK: If logo is complete, exit immediately
     if state.context_data.get("logo_complete"):
-        print(f"DEBUG order_logo_node: logo_complete=True, exiting")
+        # print(f"DEBUG order_logo_node: logo_complete=True, exiting")
         state.last_user_message = ""
         return state
 
     # If question was shown and we're waiting for response
     if state.context_data.get("logo_question_shown") and not state.last_user_message:
-        print(f"DEBUG order_logo_node: waiting for user response")
+        # print(f"DEBUG order_logo_node: waiting for user response")
         return state
 
     # Show question first time
@@ -691,10 +732,17 @@ async def order_logo_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
-
 async def order_decoration_location_node(state: SessionState) -> SessionState:
     """Ask where the decoration/print will be placed"""
+    interrupt = await _check_interrupt(state)
+    if interrupt:
+        state.last_user_message = ""
+        return state
     
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["decoration_location_shown"] = False  
+
     if state.context_data.get("decoration_location_shown") and not state.last_user_message:
         return state
         # Define decoration locations
@@ -764,10 +812,18 @@ async def order_decoration_location_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
-
 async def order_decoration_colors_node(state: SessionState) -> SessionState:
     """Ask how many colors in the decoration/print"""
     
+    interrupt = await _check_interrupt(state)
+    if interrupt: 
+        state.last_user_message = ""
+        return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["decoration_colors_shown"] = False  
+
     if state.context_data.get("decoration_colors_shown") and not state.last_user_message:
         return state
     
@@ -812,14 +868,16 @@ async def order_decoration_colors_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
-
 async def order_quantity_node(state: SessionState) -> SessionState:
 
-        
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["qty_question_shown"] = False  
 
     if state.context_data.get("qty_question_shown") and not state.last_user_message:
         return state
@@ -856,11 +914,14 @@ async def order_quantity_node(state: SessionState) -> SessionState:
 
 async def order_sizes_node(state: SessionState) -> SessionState:
 
-
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["sizes_question_shown"] = False  
 
     if state.context_data.get("sizes_question_shown") and not state.last_user_message:
         return state
@@ -919,11 +980,14 @@ async def order_sizes_node(state: SessionState) -> SessionState:
 
 async def order_delivery_node(state: SessionState) -> SessionState:
 
-
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["delivery_question_shown"] = False  
 
     if state.context_data.get("delivery_question_shown") and not state.last_user_message:
         return state
@@ -962,11 +1026,14 @@ async def order_delivery_node(state: SessionState) -> SessionState:
 
 async def order_delivery_address_node(state: SessionState) -> SessionState:
 
-
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["address_question_shown"] = False  
 
     if state.context_data.get("address_question_shown") and not state.last_user_message:
         return state
@@ -994,18 +1061,19 @@ async def order_delivery_address_node(state: SessionState) -> SessionState:
     state.last_user_message = ""
     return state
 
-
 async def order_summary_node(state: SessionState) -> SessionState:
 
     interrupt = await _check_interrupt(state)
     if interrupt:
         state.last_user_message = ""
         return state
+    
+    if state.last_user_message == "__RESUME__":
+        state.last_user_message = ""  # Clear it
+        state.context_data["summary_shown"] = False  
 
     if state.context_data.get("summary_shown") and not state.last_user_message:
         return state
-
-
 
     summary_md = _render_summary_text(state)
     state.context_data["summary_text"] = summary_md  # store for email on confirm
