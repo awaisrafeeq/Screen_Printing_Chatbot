@@ -18,8 +18,8 @@ from flows.order_flow import (
     order_product_node, order_logo_node, order_quantity_node, order_sizes_node,
     order_delivery_node,
     order_delivery_address_node,
-    order_summary_node,
-    route_order_flow, order_decoration_location_node, order_decoration_colors_node
+    order_summary_node,order_post_confirmation_node,
+    route_order_flow,route_from_post_confirmation, order_decoration_location_node, order_decoration_colors_node
 )
 
 # ---------------------------
@@ -53,7 +53,10 @@ def route_from_resume(state: SessionState) -> str:
 
     if cs == ConversationState.WELCOME:
         return "main_menu" if state.last_user_message else "welcome"
-
+    
+    if cs == ConversationState.ORDER_POST_CONFIRMATION:
+        return "order_post_confirmation"
+    
     if _is_order_state(state):
         return "order_router"
 
@@ -112,6 +115,8 @@ def create_chatbot_graph():
     g.add_node("order_delivery", order_delivery_node)
     g.add_node("order_delivery_address", order_delivery_address_node)
     g.add_node("order_summary", order_summary_node)
+    g.add_node("order_post_confirmation", order_post_confirmation_node)  # ✅ ADD THIS
+
 
     g.set_entry_point("resume")
 
@@ -125,6 +130,7 @@ def create_chatbot_graph():
             "wants_human": "wants_human",
             "end_conversation": "end_conversation",
             "order_router": "order_router",
+            "order_post_confirmation": "order_post_confirmation",
         },
     )
 
@@ -159,6 +165,8 @@ def create_chatbot_graph():
             "wants_human": "wants_human",
             "main_menu": "main_menu",
             "end_conversation": "end_conversation",
+            "order_router": "order_router",  # Add this for order resumption
+            "end": END,  # Add this to properly wait for input
         },
     )
 
@@ -184,6 +192,7 @@ def create_chatbot_graph():
     }
     g.add_conditional_edges("order_router", route_order_flow, flow_mapping)
 
+    # ✅ Order steps return to router
     for step in [
         "order_contact", "order_organization", "order_type", "order_budget",
         "order_service", "order_apparel", "order_product", "order_logo",
@@ -193,7 +202,21 @@ def create_chatbot_graph():
     ]:
         g.add_edge(step, "order_router")
 
-    g.add_edge("order_summary", END)
+    # ✅ Summary goes to post_confirmation (NOT back to router)
+    g.add_edge("order_summary", "order_post_confirmation")
+    
+    # ✅ Post-confirmation routes to main menu or end
+    g.add_conditional_edges(
+        "order_post_confirmation",
+        route_from_post_confirmation,
+        {
+            "main_menu": "main_menu",
+            "end_conversation": "end_conversation",
+            "end": END,
+        },
+    )
+
+    g.add_edge("end_conversation", END)
 
     app = g.compile()
     print("✅ Complete chatbot graph created successfully!")
