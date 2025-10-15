@@ -25,6 +25,11 @@ def _keyword_fallback(text: str) -> Intent | None:
     return None
 
 async def main_menu_node(state: SessionState) -> SessionState:
+
+    if state.context_data.get("force_main_menu_prompt"):
+        state.context_data.pop("force_main_menu_prompt")  # Clear flag
+        state.context_data["main_menu_prompted"] = False  # Force re-prompt
+
     # First time in: prompt and pause
     if not state.context_data.get("main_menu_prompted"):
         state.add_message(
