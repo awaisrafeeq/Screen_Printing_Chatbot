@@ -27,7 +27,7 @@ def load_faq_data():
     
     if current_time - last_update_time > one_week_seconds:
         print("🔄 Reloading FAQ data from PDF...")
-        pdf_text = extract_pdf_text(r"E:\Ai Data House Intern\taylor langraph chatbot\Code\chat_bot_self\FAQ For quotes.pdf")
+        pdf_text = extract_pdf_text(r"https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf")
         faq_data = extract_faq_data(pdf_text)
         faiss_index, faq_questions, faq_answers, _ = create_faq_embeddings(faq_data)
         last_update_time = current_time
