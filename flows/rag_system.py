@@ -81,9 +81,8 @@ load_faq_data()
 
 def retrieve_answer(user_question: str) -> str:
     """Retrieve the most relevant FAQ answer based on the user's question."""
-    # Ensure FAQ data is loaded
-    if faq_data is None:
-        load_faq_data()
+    # Ensure FAQ data is loaded and up-to-date (checks cache/reloads if needed)
+    load_faq_data()
     
     # Handle empty FAQ case
     if not faq_questions:
