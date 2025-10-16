@@ -4,23 +4,49 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from flows.pdf_extractor import extract_faq_data, extract_pdf_text
 import requests
-
+import os
+import time
+from datetime import datetime, timedelta
 # Load the Sentence-BERT model for embedding FAQ questions and answers
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
+# Global variables for FAQ data and last update time
+faq_data = None
+faiss_index = None
+faq_questions = None
+faq_answers = None
+last_update_time = 0
+
+def load_faq_data():
+    """Load FAQ data from PDF with weekly cache"""
+    global faq_data, faiss_index, faq_questions, faq_answers, last_update_time
+    
+    # Check if we need to reload (once per week)
+    current_time = time.time()
+    one_week_seconds = 3 * 60  # 604800 seconds
+    
+    if current_time - last_update_time > one_week_seconds:
+        print("🔄 Reloading FAQ data from PDF...")
+        pdf_text = extract_pdf_text(r"E:\Ai Data House Intern\taylor langraph chatbot\Code\chat_bot_self\FAQ For quotes.pdf")
+        faq_data = extract_faq_data(pdf_text)
+        faiss_index, faq_questions, faq_answers, _ = create_faq_embeddings(faq_data)
+        last_update_time = current_time
+        print(f"✅ FAQ data reloaded with {len(faq_data)} items")
+    else:
+        print("📚 Using cached FAQ data")
 # Extract FAQ data from PDF (replace with your actual file path)
 # pdf_text = extract_pdf_text(r"https://github.com/awaisrafeeq/Screen_Printing_Chatbot/blob/master/FAQ%20For%20quotes.pdf")
 # pdf_text = extract_pdf_text(r"https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf")
-url = "https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf"
-local_path = "FAQ.pdf"
+# url = "https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf"
+# local_path = "FAQ.pdf"
 
-r = requests.get(url)
-with open(local_path, "wb") as f:
-    f.write(r.content)
+# r = requests.get(url)
+# with open(local_path, "wb") as f:
+#     f.write(r.content)
 
-pdf_text = extract_pdf_text(local_path)
+# pdf_text = extract_pdf_text(local_path)
 
-faq_data = extract_faq_data(pdf_text)
+# faq_data = extract_faq_data(pdf_text)
 
 # Create embeddings for FAQ questions only (not combining with answers)
 def create_faq_embeddings(faq_data: dict):
@@ -37,9 +63,10 @@ def create_faq_embeddings(faq_data: dict):
     faiss_index.add(np.array(faq_embeddings, dtype=np.float32))  # Adding embeddings to the index
     
     return faiss_index, faq_questions, faq_answers, faq_data
-
+# Initial load
+load_faq_data()
 # Create the FAISS index
-faiss_index, faq_questions, faq_answers, faq_data = create_faq_embeddings(faq_data)
+# faiss_index, faq_questions, faq_answers, faq_data = create_faq_embeddings(faq_data)
 
 def retrieve_answer(user_question: str) -> str:
     """Retrieve the most relevant FAQ answer based on the user's question."""
