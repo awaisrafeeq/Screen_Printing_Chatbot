@@ -1,3 +1,4 @@
+# wants_human.py
 from models.session_state import SessionState, ConversationState
 
 async def wants_human_node(state: SessionState) -> SessionState:
@@ -6,17 +7,16 @@ async def wants_human_node(state: SessionState) -> SessionState:
     
     # First time - show contact info and options
     if not state.context_data.get("human_contact_shown"):
-        # Combine both messages into one
-        combined_message = """Sure! You can reach a human agent for assistance:
+        contact_message = """Sure! You can reach a human agent for assistance:
 
 📞 Phone: 425.303.3381
 📧 Email: info@screenprintingnw.com
-🕐 Hours: Monday to Friday from 8 a.m. to 5 p.m.
-
-What would you like to do next?
-
-- **Continue chatting** - Ask more questions or place an order
-- **End** - Finish our conversation"""
+🕐 Hours: Monday to Friday from 8 a.m. to 5 p.m."""
+        
+        if state.context_data.get("order_interrupted"):
+            combined_message = contact_message + "\n\nWould you like to **continue your order** where you left off, or **end** the conversation?"
+        else:
+            combined_message = contact_message + "\n\nWould you like to **continue chatting**, or **end** the conversation?"
         
         state.add_message("assistant", combined_message)
         
@@ -28,71 +28,89 @@ What would you like to do next?
     if state.last_user_message:
         txt = state.last_user_message.strip().lower()
         
-        # User wants to continue chatting
-        if any(word in txt for word in ["continue", "chat", "question", "order", "main", "yes"]):
-            # Check if they were in the middle of an order
-            if state.context_data.get("order_interrupted") and state.interrupted_from:
-                # Ask if they want to resume order or go to main menu
-                state.add_message(
-                    "assistant",
-                    content="Would you like to **continue your order** where you left off, or go to the **main menu**?"
-                )
-                state.context_data["awaiting_resume_choice"] = True
-                state.last_user_message = ""
-                return state
-            else:
-                # Go to main menu
-                state.current_state = ConversationState.MAIN_MENU
-                state.context_data = {}  # Clear all context
-                state.add_message(
-                    "assistant",
-                    content="Great! I'm here to help. What would you like to do?"
-                )
-                state.context_data["main_menu_prompted"] = True
-                state.last_user_message = ""
-                return state
-        
-        # User wants to end
-        elif any(word in txt for word in ["end", "bye", "goodbye", "done", "finish", "no"]):
-            state.current_state = ConversationState.END
-            state.add_message(
-                "assistant",
-                content="Thank you for chatting with us! Feel free to come back anytime. Have a great day! 👋"
-            )
-            state.last_user_message = ""
-            return state
-        
-        # Check if choosing between order resume or main menu
-        elif state.context_data.get("awaiting_resume_choice"):
-            if "order" in txt:
+        if state.context_data.get("order_interrupted"):
+            # Interrupted case: continue order or end
+            if any(word in txt for word in ["continue", "order", "resume", "yes", "left", "off"]):
                 # Resume order
                 resume_state = state.interrupted_from or ConversationState.ORDER_CONTACT
+                
+                # Reset the question flag
+                flag_map = {
+                    ConversationState.ORDER_CONTACT: "contact_question_shown",
+                    ConversationState.ORDER_ORGANIZATION: "org_question_shown",
+                    ConversationState.ORDER_TYPE: "type_question_shown",
+                    ConversationState.ORDER_BUDGET: "budget_question_shown",
+                    ConversationState.ORDER_SERVICE: "service_question_shown",
+                    ConversationState.ORDER_APPAREL: "apparel_question_shown",
+                    ConversationState.ORDER_PRODUCT: "product_question_shown",
+                    ConversationState.ORDER_LOGO: "logo_question_shown",
+                    ConversationState.ORDER_DECORATION_LOCATION: "decoration_location_shown",
+                    ConversationState.ORDER_DECORATION_COLORS: "decoration_colors_shown",
+                    ConversationState.ORDER_QUANTITY: "qty_question_shown",
+                    ConversationState.ORDER_SIZES: "sizes_question_shown",
+                    ConversationState.ORDER_DELIVERY: "delivery_question_shown",
+                }
+                
+                flag = flag_map.get(resume_state)
+                if flag:
+                    state.context_data[flag] = False
+                
+                # Clear interrupt flags
                 state.context_data["order_interrupted"] = False
-                state.context_data["awaiting_resume_choice"] = False
-                state.context_data = {}  # Clear context
+                state.interrupted_from = None
+                
                 state.current_state = resume_state
                 state.last_user_message = "__RESUME__"
+                
                 return state
-            elif "menu" in txt or "main" in txt:
-                # Go to main menu
-                state.current_state = ConversationState.MAIN_MENU
-                state.context_data = {}  # Clear all context
+            
+            elif any(word in txt for word in ["end", "bye", "goodbye", "done", "finish", "no"]):
+                state.current_state = ConversationState.END
                 state.add_message(
                     "assistant",
-                    content="Great! I'm here to help. What would you like to do?"
+                    content="Thank you for chatting with us! Feel free to come back anytime. Have a great day! 👋"
                 )
-                state.context_data["main_menu_prompted"] = True
+                state.last_user_message = ""
+                return state
+            
+            else:
+                # Didn't understand
+                state.add_message(
+                    "assistant",
+                    content="Please reply:\n• **Continue** to resume your order\n• **End** to finish our conversation"
+                )
                 state.last_user_message = ""
                 return state
         
         else:
-            # Didn't understand
-            state.add_message(
-                "assistant",
-                content="Please reply:\n• **Continue** to keep chatting\n• **End** to finish our conversation"
-            )
-            state.last_user_message = ""
-            return state
+            # Non-interrupted case
+            if any(word in txt for word in ["continue", "chat", "question", "order", "main", "yes"]):
+                state.current_state = ConversationState.MAIN_MENU
+                state.context_data = {}  # Clear all context
+                state.add_message(
+                    "assistant",
+                    content="Great! I'm here to help. What would you like to do?"
+                )
+                state.context_data["main_menu_prompted"] = True
+                state.last_user_message = ""
+                return state
+            
+            elif any(word in txt for word in ["end", "bye", "goodbye", "done", "finish", "no"]):
+                state.current_state = ConversationState.END
+                state.add_message(
+                    "assistant",
+                    content="Thank you for chatting with us! Feel free to come back anytime. Have a great day! 👋"
+                )
+                state.last_user_message = ""
+                return state
+            
+            else:
+                state.add_message(
+                    "assistant",
+                    content="Please reply:\n• **Continue** to keep chatting\n• **End** to finish our conversation"
+                )
+                state.last_user_message = ""
+                return state
     
     # Waiting for user input
     state.last_user_message = ""
