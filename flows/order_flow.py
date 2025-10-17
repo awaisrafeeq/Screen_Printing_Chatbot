@@ -91,11 +91,7 @@ async def _check_interrupt(state: SessionState) -> Optional[ConversationState]:
         state.context_data["intent_confidence"] = 1.0
         state.context_data["intent_reasoning"] = "keyword: wants human during order"
         
-        # ✅ ADD TRANSITION MESSAGE
-        state.add_message(
-            role="assistant",
-            content="I'll connect you with someone from our team. They'll be in touch shortly."
-        )
+        # Removed add_message here to avoid duplication; let the node handle it
         
         return ConversationState.WANTS_HUMAN
 
