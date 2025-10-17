@@ -28,7 +28,7 @@ def load_faq_data():
     if current_time - last_update_time > three_minutes_seconds:
         print("🔄 Reloading FAQ data from PDF...")
         # Download the PDF from GitHub
-        url = "https://raw.githubusercontent.com/awaisrafeeq/Screen_Printing_Chatbot/master/FAQ%20For%20quotes.pdf"
+        url = "https://docs.google.com/document/d/1d75C4AIuz3-jMoZsDAwjNAah5C-rMBcaIBYm4Yl4ULY/edit?tab=t.0"
         local_path = "/tmp/FAQ.pdf"  # Use /tmp for Render's ephemeral filesystem
         try:
             response = requests.get(url)
