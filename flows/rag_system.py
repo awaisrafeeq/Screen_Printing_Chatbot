@@ -21,26 +21,28 @@ def load_faq_data():
     """Load FAQ data from PDF with 3-minute cache"""
     global faq_data, faiss_index, faq_questions, faq_answers, last_update_time
     
-    # Check if we need to reload (every 3 minutes for testing)
     current_time = time.time()
-    three_minutes_seconds = 3 * 60  # 180 seconds
+    three_minutes_seconds = 3 * 60  # 180 seconds for testing
     
     if current_time - last_update_time > three_minutes_seconds:
-        print("🔄 Reloading FAQ data from PDF...")
-        # Download the PDF from GitHub
-        url = "https://docs.google.com/document/d/1d75C4AIuz3-jMoZsDAwjNAah5C-rMBcaIBYm4Yl4ULY/edit?tab=t.0"
-        local_path = "/tmp/FAQ.pdf"  # Use /tmp for Render's ephemeral filesystem
+        print("🔄 Reloading FAQ data from Google Docs PDF...")
+        # Use Google Docs PDF export URL
+        doc_id = "1d75C4AIuz3-jMoZsDAwjNAah5C-rMBcaIBYm4Yl4ULY"  # Your Doc ID
+        url = f"https://docs.google.com/document/d/{doc_id}/export?format=pdf"
+        local_path = "/tmp/FAQ.pdf"
         try:
             response = requests.get(url)
             response.raise_for_status()  # Check for download errors
+            if 'text/html' in response.headers.get('Content-Type', ''):
+                raise Exception("Received HTML instead of PDF - check if Doc is publicly shared")
             with open(local_path, 'wb') as f:
                 f.write(response.content)
             pdf_text = extract_pdf_text(local_path)
             faq_data = extract_faq_data(pdf_text)
-            if not faq_data:  # Handle empty FAQ data
+            if not faq_data:
                 print("⚠️ No FAQs extracted from PDF")
                 faq_data = {}
-                faiss_index = faiss.IndexFlatL2(384)  # Default dimension for all-MiniLM-L6-v2
+                faiss_index = faiss.IndexFlatL2(384)
                 faq_questions = []
                 faq_answers = []
             else:
@@ -49,9 +51,9 @@ def load_faq_data():
             print(f"✅ FAQ data reloaded with {len(faq_data)} items")
         except Exception as e:
             print(f"Error downloading or processing PDF: {e}")
-            if faq_data is None:  # Fallback if first load fails
+            if faq_data is None:
                 faq_data = {}
-                faiss_index = faiss.IndexFlatL2(384)  # Default dimension for all-MiniLM-L6-v2
+                faiss_index = faiss.IndexFlatL2(384)
                 faq_questions = []
                 faq_answers = []
     else:
