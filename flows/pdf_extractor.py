@@ -1,4 +1,4 @@
-# pdf_extractor.py - FLEXIBLE VERSION FOR TESTING
+# pdf_extractor.py - ENHANCED VERSION FOR FULL ANSWERS
 import fitz  # PyMuPDF
 import re
 
@@ -10,7 +10,7 @@ def extract_pdf_text(pdf_path: str) -> str:
         for page in doc:
             text += page.get_text()
         doc.close()
-        print(f"Raw PDF text (first 500 chars): {repr(text[:500])}...")  # Debug with repr for special chars
+        print(f"Raw PDF text (first 500 chars): {repr(text[:500])}...")  # Debug with repr
         print(f"Full PDF text length: {len(text)} chars")
         return text
     except Exception as e:
@@ -18,17 +18,16 @@ def extract_pdf_text(pdf_path: str) -> str:
         return ""
 
 def extract_faq_data(pdf_text: str) -> dict:
-    """Extracts FAQ data into a structured dictionary - more flexible for testing."""
+    """Extracts FAQ data into a structured dictionary with improved multi-line support."""
     faqs = {}
     
     # Log raw input for debugging
     print(f"Processing PDF text (length: {len(pdf_text)} chars)")
     
-    # More flexible pattern: Matches numbered items like "1. Question Answer" or "1) Question? Answer"
-    # Allows questions without ? and captures multi-line answers
-    pattern = r'(\d+[.)])\s*([^.?]+(?:\?|\.))?\s*:?\s*([^\d\n]+(?:\n(?!\d+[.)])[^\d\n]+)*)'
+    # Enhanced pattern: Matches numbered items and captures multi-line answers until next number
+    pattern = r'(\d+[.)])\s*([^.?]+(?:\?|\.))?\s*:?\s*(.+?)(?=(?:\d+[.)]|\Z))'
     
-    matches = re.findall(pattern, pdf_text, re.MULTILINE | re.IGNORECASE)
+    matches = re.findall(pattern, pdf_text, re.DOTALL | re.MULTILINE)
     print(f"Regex found {len(matches)} potential matches")
     
     for match in matches:
@@ -36,36 +35,34 @@ def extract_faq_data(pdf_text: str) -> dict:
         question = (question or "").strip()
         answer = ' '.join(answer.strip().split())  # Clean whitespace
         
-        # Make question end with ? if it doesn't
+        # Ensure question ends with ?
         if question and not question.endswith('?'):
             question += '?'
         
-        # Skip if too short or invalid
+        # Skip if too short
         if len(question) > 5 and len(answer) > 5:
             faqs[question.lower()] = answer
-            print(f"Added FAQ: Q={question[:50]}... A={answer[:50]}...")
+            print(f"Added FAQ: Q={question[:50]}... A={answer[:100]}...")
         else:
             print(f"Skipped short FAQ: Q={question[:50]}... A={answer[:50]}...")
     
-    # Improved fallback: Line-by-line parsing (handles more formats)
-    if len(faqs) < 3:  # Only fallback if regex gets few/no matches
+    # Fallback: Line-by-line with better multi-line answer collection
+    if len(faqs) < 3:
         print("Using fallback line-by-line parsing...")
         lines = [line.strip() for line in pdf_text.split('\n') if line.strip()]
         current_question = None
         current_answer = []
+        collecting_answer = False
         
         for line in lines:
-            # Start new FAQ if line looks like numbered question
             if re.match(r'^\d+[.)]', line):
-                # Save previous
                 if current_question and current_answer:
                     answer_text = ' '.join(current_answer).strip()
                     if len(current_question) > 5 and len(answer_text) > 5:
                         q_key = current_question.lower().rstrip('?') + '?'
                         faqs[q_key] = answer_text
-                        print(f"Fallback added: Q={q_key[:50]}... A={answer_text[:50]}...")
-                
-                # New question
+                        print(f"Fallback added: Q={q_key[:50]}... A={answer_text[:100]}...")
+                # Start new FAQ
                 line = re.sub(r'^\d+[.)]\s*', '', line).strip()
                 if ':' in line:
                     parts = line.split(':', 1)
@@ -74,21 +71,21 @@ def extract_faq_data(pdf_text: str) -> dict:
                 else:
                     current_question = line + '?'
                     current_answer = []
-            elif current_question and current_answer:  # Add to answer
+                collecting_answer = True
+            elif collecting_answer and current_question:
                 current_answer.append(line)
-            elif not current_question and re.search(r'\?', line):  # Loose question match
+            elif re.search(r'\?', line) and not current_question:  # Loose question start
                 current_question = line + '?'
                 current_answer = []
+                collecting_answer = True
         
-        # Save last one
         if current_question and current_answer:
             answer_text = ' '.join(current_answer).strip()
             if len(current_question) > 5 and len(answer_text) > 5:
                 q_key = current_question.lower().rstrip('?') + '?'
                 faqs[q_key] = answer_text
-                print(f"Fallback added last: Q={q_key[:50]}... A={answer_text[:50]}...")
+                print(f"Fallback added last: Q={q_key[:50]}... A={answer_text[:100]}...")
     
-    # Final count and samples
     print(f"Total extracted {len(faqs)} FAQ items")
     if faqs:
         items = list(faqs.items())[:3]
@@ -96,6 +93,6 @@ def extract_faq_data(pdf_text: str) -> dict:
             print(f"Sample Q: {q[:50]}...")
             print(f"Sample A: {a[:100]}...")
     else:
-        print("❌ No FAQs extracted - check PDF format (should be like '1. How much? Answer here.')")
+        print("❌ No FAQs extracted - check PDF format (e.g., '1. How much? Full answer here.')")
     
     return faqs
