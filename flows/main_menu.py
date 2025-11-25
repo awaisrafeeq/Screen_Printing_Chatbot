@@ -87,7 +87,7 @@ async def main_menu_node(state: SessionState) -> SessionState:
             return state
 
         if intent == Intent.PLACE_ORDER:
-            state.current_state = ConversationState.ORDER_CONTACT
+            state.current_state = ConversationState.ORDER_CONTACT_FIRST_NAME
             state.add_message(
                 role="assistant",
                 content="Great — let's start your quote request.",
@@ -100,7 +100,11 @@ async def main_menu_node(state: SessionState) -> SessionState:
             state.current_state = ConversationState.WANTS_HUMAN
             state.add_message(
                 role="assistant",
-                content="Sure — I’ll connect you with a person.",
+                content="""Sure! You can reach a human agent for assistance:
+
+📞 Phone: 425.303.3381
+📧 Email: info@screenprintingnw.com
+🕐 Hours: Monday to Friday from 8 a.m. to 5 p.m.""",
                 metadata={"intent": intent.value, "confidence": confidence},
             )
             state.last_user_message = ""
@@ -120,7 +124,7 @@ async def main_menu_node(state: SessionState) -> SessionState:
         reply = (
             "Hi! Ask me anything about apparel, printing, pricing, or say **I want to order** to start a quote."
             if intent != Intent.HAS_QUESTIONS_ABOUT_PRODUCT
-            else "Sure—what product are you curious about? T-shirts, hoodies, caps, polos…"
+            else "Sure—what product are you curious about? T-shirts, hoodies, hats, polos…"
         )
         state.add_message(
             role="assistant",
@@ -137,8 +141,8 @@ async def main_menu_node(state: SessionState) -> SessionState:
     return state
 
 def route_from_main_menu(state: SessionState) -> str:
-    if state.current_state == ConversationState.ORDER_CONTACT:
-        return "order_contact"
+    if state.current_state == ConversationState.ORDER_CONTACT_FIRST_NAME:
+        return "order_router"
     if state.current_state == ConversationState.HAS_QUESTIONS_ABOUT_PRODUCT:
         return "product_questions"  # NEW ROUTE
     if state.current_state == ConversationState.WANTS_HUMAN:
