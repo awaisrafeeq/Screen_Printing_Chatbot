@@ -13,13 +13,14 @@ from flows.end_conversation import end_node
 from flows.product_questions import product_questions_node, route_from_product_questions
 
 from flows.order_flow import (
-    order_contact_node, order_organization_node, order_type_node,
+    order_organization_node, order_type_node,
     order_budget_node, order_service_node, order_apparel_node,
     order_product_node, order_logo_node, order_quantity_node, order_sizes_node,
     order_delivery_node,
     order_delivery_address_node,
     order_summary_node,order_post_confirmation_node,
-    route_order_flow,route_from_post_confirmation, order_decoration_location_node, order_decoration_colors_node
+    route_order_flow,route_from_post_confirmation, order_decoration_location_node, order_decoration_colors_node,
+    order_contact_first_name_node,order_contact_last_name_node, order_contact_email_node,order_contact_phone_node,
 )
 
 # ---------------------------
@@ -98,9 +99,12 @@ def create_chatbot_graph():
     g.add_node("product_questions", product_questions_node)
     g.add_node("wants_human", wants_human_node)
     g.add_node("end_conversation", end_node)
-
+    g.add_node("order_contact_first_name", order_contact_first_name_node)
+    g.add_node("order_contact_last_name", order_contact_last_name_node)
+    g.add_node("order_contact_email", order_contact_email_node)
+    g.add_node("order_contact_phone", order_contact_phone_node)
     g.add_node("order_router", order_router_node)
-    g.add_node("order_contact", order_contact_node)
+    # g.add_node("order_contact", order_contact_node)
     g.add_node("order_organization", order_organization_node)
     g.add_node("order_type", order_type_node)
     g.add_node("order_budget", order_budget_node)
@@ -143,7 +147,7 @@ def create_chatbot_graph():
             "product_questions": "product_questions",
             "wants_human": "wants_human",
             "end_conversation": "end_conversation",
-            "order_contact": "order_router",
+            "order_router": "order_router",
             "end": END,
         },
     )
@@ -171,7 +175,12 @@ def create_chatbot_graph():
     )
 
     flow_mapping = {
-        "order_contact": "order_contact",
+        "order_contact_first_name": "order_contact_first_name",  # NEW
+        "order_contact_last_name": "order_contact_last_name",    # NEW
+        "order_contact_email": "order_contact_email",            # NEW
+        "order_contact_phone": "order_contact_phone",            # NEW
+        "order_organization": "order_organization",
+        # "order_contact": "order_contact",
         "order_organization": "order_organization",
         "order_type": "order_type",
         "order_budget": "order_budget",
@@ -194,7 +203,8 @@ def create_chatbot_graph():
 
     # ✅ Order steps return to router
     for step in [
-        "order_contact", "order_organization", "order_type", "order_budget",
+        "order_contact_first_name", "order_contact_last_name", "order_contact_email", "order_contact_phone",
+        "order_organization", "order_type", "order_budget",
         "order_service", "order_apparel", "order_product", "order_logo",
         "order_decoration_location", "order_decoration_colors",
         "order_quantity", "order_sizes",
