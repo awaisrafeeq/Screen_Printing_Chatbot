@@ -22,7 +22,7 @@ def load_faq_data():
     global faq_data, faiss_index, faq_questions, faq_answers, last_update_time
     
     current_time = time.time()
-    three_minutes_seconds = 3 * 60  # 180 seconds for testing
+    three_minutes_seconds = 7 * 24 * 60 * 60   # 180 seconds for testing
     
     if current_time - last_update_time > three_minutes_seconds:
         print("🔄 Reloading FAQ data from Google Docs PDF...")
