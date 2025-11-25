@@ -2,15 +2,18 @@
 from models.session_state import SessionState, ConversationState, Intent
 from flows.rag_system import retrieve_answer
 import asyncio
+import re
 
 # At the top of product_questions.py, after imports
 
 def _reset_question_flag_for_state(state: SessionState, conv_state: ConversationState):
     """Reset the question_shown flag for a given conversation state"""
     flag_map = {
-        ConversationState.ORDER_CONTACT: "contact_question_shown",
-        ConversationState.ORDER_ORGANIZATION: "org_question_shown",
-        ConversationState.ORDER_TYPE: "type_question_shown",
+        ConversationState.ORDER_CONTACT_FIRST_NAME: "contact_first_name_shown",
+        ConversationState.ORDER_CONTACT_LAST_NAME: "contact_last_name_shown",
+        ConversationState.ORDER_CONTACT_EMAIL: "contact_email_shown",
+        ConversationState.ORDER_CONTACT_PHONE: "contact_phone_shown",
+        ConversationState.ORDER_ORGANIZATION: ("org_type_shown", "org_name_shown"),  # Reset both for split question        ConversationState.ORDER_TYPE: "type_question_shown",
         ConversationState.ORDER_BUDGET: "budget_question_shown",
         ConversationState.ORDER_SERVICE: "service_question_shown",
         ConversationState.ORDER_APPAREL: "apparel_question_shown",
@@ -60,17 +63,17 @@ async def product_questions_node(state: SessionState) -> SessionState:
         user_question = state.last_user_message.strip()
         
         # Check for exit keywords
-        if any(word in user_question.lower() for word in ["done", "finished", "back", "menu"]):
+        if any(word in user_question.lower() for word in ["done", "finished", "back", "menu" , "main menu"]):
             # If interrupted from order, ask about resuming
             if state.context_data.get("order_interrupted"):
                 state.add_message(
                     role="assistant",
                     content=(
                         "Got it! Would you like to **continue your order** where you left off, "
-                        "or return to the main menu?\n\n"
+                        "or return to the **main menu**?\n\n"
                         "Reply:\n"
                         "• **Continue order** - Resume your quote request\n"
-                        "• **Main menu** - Start fresh"
+                        "• **Main** - For Start fresh"
                     ),
                 )
                 state.context_data["awaiting_resume_decision"] = True
@@ -110,20 +113,37 @@ async def product_questions_node(state: SessionState) -> SessionState:
                 
                 return state
             
-            elif "menu" in user_question.lower() or "main" in user_question.lower():
-                state.current_state = ConversationState.MAIN_MENU
-                state.context_data["order_interrupted"] = False
-                state.context_data["awaiting_resume_decision"] = False
-                state.context_data["product_question_prompted"] = False
-                state.interrupted_from = None
-                
+            elif re.search(r"(main\s*menu|menu|main)", user_question.lower()):
+                # Ensure we clear all flags and move to main menu
+                if state.context_data.get("awaiting_resume_decision"):
+                    # Clear any decision flags
+                    state.context_data["order_interrupted"] = False
+                    state.context_data["awaiting_resume_decision"] = False
+                    state.context_data["product_question_prompted"] = False
+                    state.interrupted_from = None
+
+                    # Transition to main menu directly
+                    state.current_state = ConversationState.MAIN_MENU
+                    state.add_message(
+                        role="assistant",
+                        content="Okay, back to the main menu. How can I help you?",
+                    )
+                    state.last_user_message = ""  # Clear last message to prevent loops
+                    return state
+
+                # If not in the 'awaiting_resume_decision' state, the user is likely still in product questions
                 state.add_message(
                     role="assistant",
-                    content="Okay, back to the main menu. How can I help you?",
+                    content=(
+                        "It seems you want to go back to the **main menu**. Please confirm:\n"
+                        "• **Continue order** - Resume your quote request\n"
+                        "• **Main ** - For Start fresh"
+                    )
                 )
-                state.last_user_message = ""
+                state.context_data["awaiting_resume_decision"] = True  # Set flag to await decision
+                state.last_user_message = ""  # Consume the message
                 return state
-        
+            
         try:
             # Use RAG system to retrieve answer
             answer = await asyncio.to_thread(retrieve_answer, user_question)
@@ -131,7 +151,7 @@ async def product_questions_node(state: SessionState) -> SessionState:
             # If interrupted from order, remind them they can continue
             follow_up = (
                 "\n\nDo you have other questions? "
-                "Or say **done** when you're ready to continue your order."
+                "Or say **done** when you're ready for order."
                 if state.context_data.get("order_interrupted")
                 else "\n\nDo you have any other questions? Or type 'done' to return to the main menu."
             )
