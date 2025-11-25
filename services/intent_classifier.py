@@ -82,6 +82,9 @@ Be very precise with intent names. Return only valid JSON."""
         """Fallback function for keyword-based intent matching"""
         t = (text or "").lower()
         
+        if "new order" in t or "place another" in t:  # NEW: Handle post-confirmation "new order"
+            return Intent.PLACE_ORDER
+
         # Check if 'product' is mentioned in the text
         if "product" in t:
             return Intent.HAS_QUESTIONS_ABOUT_PRODUCT  # New fallback for product-related queries
