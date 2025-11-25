@@ -36,8 +36,11 @@ async def wants_human_node(state: SessionState) -> SessionState:
                 
                 # Reset the question flag
                 flag_map = {
-                    ConversationState.ORDER_CONTACT: "contact_question_shown",
-                    ConversationState.ORDER_ORGANIZATION: "org_question_shown",
+                    ConversationState.ORDER_CONTACT_FIRST_NAME: "contact_first_name_shown",
+                    ConversationState.ORDER_CONTACT_LAST_NAME: "contact_last_name_shown",
+                    ConversationState.ORDER_CONTACT_EMAIL: "contact_email_shown",
+                    ConversationState.ORDER_CONTACT_PHONE: "contact_phone_shown",
+                    ConversationState.ORDER_ORGANIZATION: ("org_type_shown", "org_name_shown"),
                     ConversationState.ORDER_TYPE: "type_question_shown",
                     ConversationState.ORDER_BUDGET: "budget_question_shown",
                     ConversationState.ORDER_SERVICE: "service_question_shown",
