@@ -8,12 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
 
-# ✅ Clean imports - import each thing ONCE
 from main import ScreenPrintingChatbot, get_session_manager
-from models.session_state import ConversationState 
+from models.session_state import ConversationState
 from flows.oauth_uploader import upload_to_drive
 
-# ✅ Initialize AFTER imports
 chatbot = ScreenPrintingChatbot()
 session_manager = get_session_manager()
 
@@ -88,9 +86,8 @@ class UploadResponse(BaseModel):
     upload_key: str = Field(..., description="Unique key for the upload request")
     file_details: Dict[str, Optional[str]] = Field(..., description="Details of the uploaded file")
     confirmation_message: str = Field(..., description="Confirmation message after upload")
-    next_response: Optional[str] = Field(None, description="Next question from chatbot")  # ✅ ADD THIS
+    next_response: Optional[str] = Field(None, description="Next question from chatbot")
     error: Optional[str] = Field(None, description="Error message if success=false")
-
 
     class Config:
         json_schema_extra = {
@@ -111,7 +108,6 @@ class UploadResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
     return {
         "status": "online",
         "service": "Screen Printing NW Chatbot API",
@@ -120,7 +116,6 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
     return {
         "status": "healthy",
         "chatbot_initialized": chatbot is not None,
@@ -129,9 +124,6 @@ async def health_check():
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """
-    Main chat endpoint - processes user messages and returns bot responses
-    """
     try:
         if not request.session_id or len(request.session_id) < 3:
             raise HTTPException(
@@ -143,7 +135,6 @@ async def chat(request: ChatRequest):
             session_id=request.session_id,
             user_message=request.message
         )
-        # session_manager = SessionManager()
         state = session_manager.get_session(request.session_id)
 
         return ChatResponse(
@@ -171,9 +162,6 @@ async def chat(request: ChatRequest):
 
 @app.post("/api/session/new", response_model=NewSessionResponse)
 async def create_new_session():
-    """
-    Create a new chat session with a welcome message
-    """
     try:
         import uuid
         session_id = f"session_{uuid.uuid4().hex[:12]}"
@@ -190,11 +178,7 @@ async def create_new_session():
 
 @app.get("/api/session/{session_id}", response_model=SessionStateResponse)
 async def get_session_state(session_id: str):
-    """
-    Get current state of a session
-    """
     try:
-        # session_manager = SessionManager()
         state = session_manager.get_session(session_id)
 
         return SessionStateResponse(
@@ -232,11 +216,7 @@ async def get_session_state(session_id: str):
 
 @app.delete("/api/session/{session_id}")
 async def delete_session(session_id: str):
-    """
-    Delete/end a session
-    """
     try:
-        # session_manager = SessionManager()
         if session_id in session_manager.sessions:
             del session_manager.sessions[session_id]
             return {"success": True, "message": f"Session {session_id} deleted"}
@@ -247,9 +227,6 @@ async def delete_session(session_id: str):
 
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload_file(session_id: str, file: UploadFile = File(...)):
-    """
-    Upload logo/artwork file for a session and return next question
-    """
     try:
 
         allowed_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.pdf', '.ai', '.eps', '.psd'}
@@ -268,7 +245,6 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 error=f"File type {file_ext} not allowed. Allowed: {', '.join(allowed_extensions)}"
             )
 
-        # session_manager = SessionManager()
         state = session_manager.get_session(session_id)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
@@ -287,20 +263,17 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 make_public=make_public,
             )
 
-            # ✅ Update state with upload details
             state.context_data["logo_file_id"] = file_id
             state.context_data["logo_view_link"] = view_link
             state.context_data["logo_filename"] = file.filename
-            state.context_data["logo_complete"] = True  # Mark as complete
-            state.context_data["awaiting_upload"] = False  # No longer waiting
-            # ✅ KEEP logo_question_shown as True (don't reset it!)
+            state.context_data["logo_complete"] = True
+            state.context_data["awaiting_upload"] = False
             
             session_manager.update_session(state)
 
-            # ✅ Call chatbot to get the next question
             next_response = await chatbot.chat(
                 session_id=session_id,
-                user_message=""  # Empty message triggers next step
+                user_message=""
             )
 
             return UploadResponse(
@@ -315,17 +288,15 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
                 },
                 confirmation_message=f"✅ {file.filename} uploaded successfully",
                 error=None,
-                next_response=next_response["response"]  # Return next question
+                next_response=next_response["response"]
             )
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
                 
     except Exception as e:
-        # session_manager = SessionManager()
         state = session_manager.get_session(session_id)
         
-        # Mark logo as skipped and continue
         state.context_data["logo_complete"] = True
         state.context_data["awaiting_upload"] = False
         
