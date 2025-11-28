@@ -1,4 +1,3 @@
-# main.py - UPDATED
 import os
 import asyncio
 from typing import Dict, Any
@@ -18,14 +17,11 @@ from flows.order_flow import (
     order_product_node, order_logo_node, order_quantity_node, order_sizes_node,
     order_delivery_node,
     order_delivery_address_node,
-    order_summary_node,order_post_confirmation_node,
-    route_order_flow,route_from_post_confirmation, order_decoration_location_node, order_decoration_colors_node,
-    order_contact_first_name_node,order_contact_last_name_node, order_contact_email_node,order_contact_phone_node,
+    order_summary_node, order_post_confirmation_node,
+    route_order_flow, route_from_post_confirmation, order_decoration_location_node, order_decoration_colors_node,
+    order_contact_first_name_node, order_contact_last_name_node, order_contact_email_node, order_contact_phone_node,
 )
 
-# ---------------------------
-# ✅ SINGLETON session manager
-# ---------------------------
 _session_manager_instance = None
 
 def get_session_manager():
@@ -35,9 +31,6 @@ def get_session_manager():
         _session_manager_instance = SessionManager()
     return _session_manager_instance
 
-# ---------------------------
-# Dispatcher ("resume") node
-# ---------------------------
 def resume_node(state: SessionState) -> SessionState:
     return state
 
@@ -79,16 +72,10 @@ def route_from_resume(state: SessionState) -> str:
 
     return "main_menu"
 
-# ---------------------------
-# Order router hub
-# ---------------------------
 def order_router_node(state: SessionState) -> SessionState:
     """No-op; routing is handled by conditional edges with route_order_flow."""
     return state
 
-# ---------------------------
-# Graph builder
-# ---------------------------
 def create_chatbot_graph():
     print("🔧 Creating complete chatbot graph...")
     g = StateGraph(SessionState)
@@ -104,7 +91,6 @@ def create_chatbot_graph():
     g.add_node("order_contact_email", order_contact_email_node)
     g.add_node("order_contact_phone", order_contact_phone_node)
     g.add_node("order_router", order_router_node)
-    # g.add_node("order_contact", order_contact_node)
     g.add_node("order_organization", order_organization_node)
     g.add_node("order_type", order_type_node)
     g.add_node("order_budget", order_budget_node)
@@ -119,8 +105,7 @@ def create_chatbot_graph():
     g.add_node("order_delivery", order_delivery_node)
     g.add_node("order_delivery_address", order_delivery_address_node)
     g.add_node("order_summary", order_summary_node)
-    g.add_node("order_post_confirmation", order_post_confirmation_node)  # ✅ ADD THIS
-
+    g.add_node("order_post_confirmation", order_post_confirmation_node)
 
     g.set_entry_point("resume")
 
@@ -169,18 +154,16 @@ def create_chatbot_graph():
             "wants_human": "wants_human",
             "main_menu": "main_menu",
             "end_conversation": "end_conversation",
-            "order_router": "order_router",  # Add this for order resumption
-            "end": END,  # Add this to properly wait for input
+            "order_router": "order_router",
+            "end": END,
         },
     )
 
     flow_mapping = {
-        "order_contact_first_name": "order_contact_first_name",  # NEW
-        "order_contact_last_name": "order_contact_last_name",    # NEW
-        "order_contact_email": "order_contact_email",            # NEW
-        "order_contact_phone": "order_contact_phone",            # NEW
-        "order_organization": "order_organization",
-        # "order_contact": "order_contact",
+        "order_contact_first_name": "order_contact_first_name",
+        "order_contact_last_name": "order_contact_last_name",
+        "order_contact_email": "order_contact_email",
+        "order_contact_phone": "order_contact_phone",
         "order_organization": "order_organization",
         "order_type": "order_type",
         "order_budget": "order_budget",
@@ -201,7 +184,6 @@ def create_chatbot_graph():
     }
     g.add_conditional_edges("order_router", route_order_flow, flow_mapping)
 
-    # ✅ Order steps return to router
     for step in [
         "order_contact_first_name", "order_contact_last_name", "order_contact_email", "order_contact_phone",
         "order_organization", "order_type", "order_budget",
@@ -212,10 +194,8 @@ def create_chatbot_graph():
     ]:
         g.add_edge(step, "order_router")
 
-    # ✅ Summary goes to post_confirmation (NOT back to router)
     g.add_edge("order_summary", "order_post_confirmation")
     
-    # ✅ Post-confirmation routes to main menu or end
     g.add_conditional_edges(
         "order_post_confirmation",
         route_from_post_confirmation,
@@ -232,16 +212,13 @@ def create_chatbot_graph():
     print("✅ Complete chatbot graph created successfully!")
     return app
 
-# ---------------------------
-# Orchestrator
-# ---------------------------
 class ScreenPrintingChatbot:
     def __init__(self):
         self.app = create_chatbot_graph()
-        self.session_manager = get_session_manager()  # ✅ Use singleton
+        self.session_manager = get_session_manager()
 
     async def chat(self, session_id: str, user_message: str) -> Dict[str, Any]:
-        state = self.session_manager.get_session(session_id)  # ✅ Use instance variable
+        state = self.session_manager.get_session(session_id)
 
         if user_message:
             state.add_message("user", user_message)
@@ -260,7 +237,7 @@ class ScreenPrintingChatbot:
                 },
             )
             final_state = SessionState(**dict(result)) if not isinstance(result, SessionState) else result
-            self.session_manager.update_session(final_state)  # ✅ Use instance variable
+            self.session_manager.update_session(final_state)
 
             replies = [m for m in final_state.conversation_history if m["role"] == "assistant"]
             latest = replies[-1]["content"] if replies else "..."
@@ -283,9 +260,6 @@ class ScreenPrintingChatbot:
                 "session_id": session_id,
             }
 
-# ---------------------------
-# CLI for manual testing
-# ---------------------------
 async def interactive_chat():
     print("🚀 Screen Printing NW Chatbot - Interactive Mode")
     print("=" * 50)
