@@ -1,15 +1,14 @@
-
 import os
 import json
 from typing import Dict, Any
 from openai import AsyncOpenAI
 from models.session_state import Intent
 from dotenv import load_dotenv
-# Load environment variables from .env
+
 load_dotenv()
+
+
 class IntentClassifier:
-    """OpenAI-powered intent classification"""
-    
     def __init__(self):
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
@@ -36,9 +35,7 @@ Response format:
 Be very precise with intent names. Return only valid JSON."""
 
     async def classify_intent(self, user_message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Classify user intent using OpenAI"""
         try:
-            # Add context if provided
             system_prompt = self.SYSTEM_PROMPT
             if context and context.get("current_state"):
                 system_prompt += f"\n\nCurrent conversation context: User is in {context['current_state']} state."
@@ -53,11 +50,9 @@ Be very precise with intent names. Return only valid JSON."""
                 max_tokens=250
             )
             
-            # Parse JSON response
             result_text = response.choices[0].message.content.strip()
             result = json.loads(result_text)
             
-            # Validate intent is in our enum
             intent_name = result.get("intent", "No match")
             try:
                 Intent(intent_name)
@@ -79,17 +74,14 @@ Be very precise with intent names. Return only valid JSON."""
         
 
     def _keyword_fallback(self, text: str) -> Intent | None:
-        """Fallback function for keyword-based intent matching"""
         t = (text or "").lower()
         
-        if "new order" in t or "place another" in t:  # NEW: Handle post-confirmation "new order"
+        if "new order" in t or "place another" in t:
             return Intent.PLACE_ORDER
 
-        # Check if 'product' is mentioned in the text
         if "product" in t:
-            return Intent.HAS_QUESTIONS_ABOUT_PRODUCT  # New fallback for product-related queries
+            return Intent.HAS_QUESTIONS_ABOUT_PRODUCT
         
-        # Existing fallback logic for other intents
         if any(w in t for w in ["order", "quote", "pricing", "place order"]):
             return Intent.PLACE_ORDER
         if any(w in t for w in ["human", "agent", "representative", "call"]):
