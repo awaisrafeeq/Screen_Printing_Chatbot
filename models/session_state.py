@@ -1,19 +1,17 @@
-
 from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 class ConversationState(str, Enum):
-    """All possible conversation states"""
     WELCOME = "WELCOME"
     MAIN_MENU = "MAIN_MENU"
     WANTS_HUMAN = "WANTS_HUMAN"
     HAS_QUESTIONS_ABOUT_PRODUCT = "HAS_QUESTIONS_ABOUT_PRODUCT"
-    ORDER_CONTACT_FIRST_NAME = "ORDER_CONTACT_FIRST_NAME"  # NEW
-    ORDER_CONTACT_LAST_NAME = "ORDER_CONTACT_LAST_NAME"    # NEW
-    ORDER_CONTACT_EMAIL = "ORDER_CONTACT_EMAIL"            # NEW
-    ORDER_CONTACT_PHONE = "ORDER_CONTACT_PHONE"            # NEW
+    ORDER_CONTACT_FIRST_NAME = "ORDER_CONTACT_FIRST_NAME"
+    ORDER_CONTACT_LAST_NAME = "ORDER_CONTACT_LAST_NAME"
+    ORDER_CONTACT_EMAIL = "ORDER_CONTACT_EMAIL"
+    ORDER_CONTACT_PHONE = "ORDER_CONTACT_PHONE"
     ORDER_ORGANIZATION = "ORDER_ORGANIZATION"
     ORDER_TYPE = "ORDER_TYPE"
     ORDER_BUDGET = "ORDER_BUDGET"
@@ -32,9 +30,8 @@ class ConversationState(str, Enum):
     END = "END"
 
 class Intent(str, Enum):
-    """All possible user intents"""
     GREETING = "Greeting"
-    HAS_QUESTIONS_ABOUT_PRODUCT = "Has Questions about Product"  
+    HAS_QUESTIONS_ABOUT_PRODUCT = "Has Questions about Product"
     PLACE_ORDER = "Place order"
     END_CONVERSATION = "End conversation"
     WANTS_HUMAN = "Wants Human"
@@ -60,34 +57,30 @@ class OrderDetails(BaseModel):
     contact: Contact = Field(default_factory=Contact)
     organization: Organization = Field(default_factory=Organization)
     order_type: Optional[str] = None
-    budget_range: Optional[str] = None  # "Premium" or "Value"
-    service_type: Optional[str] = None  # "Screen Printing" or "Embroidery"
-    apparel_category: Optional[str] = None  # "Hats", "Hoodies", etc.
+    budget_range: Optional[str] = None
+    service_type: Optional[str] = None
+    apparel_category: Optional[str] = None
     product_name: Optional[str] = None
-    color: Optional[str] = None    
+    color: Optional[str] = None
     decoration_location: Optional[str] = None
     decoration_colors: Optional[int] = None
-    total_quantity: Optional[str] = None  # "0-10", "11-20", etc.
+    total_quantity: Optional[str] = None
     sizes: List[SizeQuantity] = Field(default_factory=list)
-    delivery_option: Optional[str] = None  # "Pick Up" or "Delivery"
+    delivery_option: Optional[str] = None
     delivery_address: Optional[str] = None
 
 class SessionState(BaseModel):
-    """Complete session state for the chatbot"""
     session_id: str
     current_state: ConversationState = ConversationState.WELCOME
     last_user_message: Optional[str] = None
     classified_intent: Optional[Intent] = None
     conversation_history: List[Dict[str, Any]] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.now)    
-    # Order data
+    created_at: datetime = Field(default_factory=datetime.now)
     order: OrderDetails = Field(default_factory=OrderDetails)
-    # Context preservation for flow interruptions
     interrupted_from: Optional[ConversationState] = None
     context_data: Dict[str, Any] = Field(default_factory=dict)
     
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None):
-        """Add a message to conversation history"""
         message = {
             "role": role,
             "content": content,
