@@ -1,11 +1,8 @@
-# wants_human.py
 from models.session_state import SessionState, ConversationState
 
 async def wants_human_node(state: SessionState) -> SessionState:
-    """Handle human escalation request"""
     print("🤖 Wants Human Node - Showing Contact Info")
     
-    # First time - show contact info and options
     if not state.context_data.get("human_contact_shown"):
         contact_message = """Sure! You can reach a human agent for assistance:
 
@@ -24,17 +21,13 @@ async def wants_human_node(state: SessionState) -> SessionState:
         state.last_user_message = ""
         return state
     
-    # Handle user's choice
     if state.last_user_message:
         txt = state.last_user_message.strip().lower()
         
         if state.context_data.get("order_interrupted"):
-            # Interrupted case: continue order or end
             if any(word in txt for word in ["continue", "order", "resume", "yes", "left", "off"]):
-                # Resume order
                 resume_state = state.interrupted_from or ConversationState.ORDER_CONTACT
                 
-                # Reset the question flag
                 flag_map = {
                     ConversationState.ORDER_CONTACT_FIRST_NAME: "contact_first_name_shown",
                     ConversationState.ORDER_CONTACT_LAST_NAME: "contact_last_name_shown",
@@ -58,7 +51,6 @@ async def wants_human_node(state: SessionState) -> SessionState:
                 if flag:
                     state.context_data[flag] = False
                 
-                # Clear interrupt flags
                 state.context_data["order_interrupted"] = False
                 state.interrupted_from = None
                 
@@ -77,7 +69,6 @@ async def wants_human_node(state: SessionState) -> SessionState:
                 return state
             
             else:
-                # Didn't understand
                 state.add_message(
                     "assistant",
                     content="Please reply:\n• **Continue** to resume your order\n• **End** to finish our conversation"
@@ -86,10 +77,9 @@ async def wants_human_node(state: SessionState) -> SessionState:
                 return state
         
         else:
-            # Non-interrupted case
             if any(word in txt for word in ["continue", "chat", "question", "order", "main", "yes"]):
                 state.current_state = ConversationState.MAIN_MENU
-                state.context_data = {}  # Clear all context
+                state.context_data = {}
                 state.add_message(
                     "assistant",
                     content="Great! I'm here to help. What would you like to do?"
@@ -115,23 +105,19 @@ async def wants_human_node(state: SessionState) -> SessionState:
                 state.last_user_message = ""
                 return state
     
-    # Waiting for user input
     state.last_user_message = ""
     return state
 
 
 def route_from_wants_human(state: SessionState) -> str:
-    """Route from wants_human"""
     if state.current_state == ConversationState.MAIN_MENU:
         return "main_menu"
     elif state.current_state == ConversationState.END:
         return "end_conversation"
     elif state.current_state != ConversationState.WANTS_HUMAN:
-        # Resuming order
         return "order_router"
     
-    # If human_contact_shown is True and no message, wait for input
     if state.context_data.get("human_contact_shown") and not state.last_user_message:
-        return "end"  # This means END the current processing, wait for input
+        return "end"
     
-    return "wants_human"  # Stay in node to process
+    return "wants_human"
