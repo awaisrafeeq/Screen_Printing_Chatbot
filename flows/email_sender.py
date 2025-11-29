@@ -1,22 +1,10 @@
-# email_sender.py
 import os
 import smtplib
 from email.mime.text import MIMEText
-from dotenv import load_dotenv  # pip install python-dotenv
+from dotenv import load_dotenv
 load_dotenv()
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
-    """
-    Minimal SMTP sender.
-    Configure these env vars:
-      EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM
-    Examples (Gmail):
-      EMAIL_HOST=smtp.gmail.com
-      EMAIL_PORT=587
-      EMAIL_USER=youraddress@gmail.com
-      EMAIL_PASS=your_app_password   (use an App Password)
-      EMAIL_FROM=Screen Printing NW <youraddress@gmail.com>
-    """
     host = os.getenv("EMAIL_HOST")
     port = int(os.getenv("EMAIL_PORT", "587"))
     user = os.getenv("EMAIL_USER")
